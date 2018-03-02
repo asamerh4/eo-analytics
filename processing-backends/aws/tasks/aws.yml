@@ -458,5 +458,6 @@
         desired_capacity: 1
         vpc_zone_identifier: [ "{{ subnet_agent.subnet.id }}" ]
         tags:
-          - Name: "{{ cluster_id }}-agent"
+          - Name: "{{ cluster_id }}-agents"
+          - CostName: asg_agent
 

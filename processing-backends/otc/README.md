@@ -1,6 +1,6 @@
 processing backend on OTC
 =========================
-Playbooks and roles for deployment on Open Telekom Cloud (OTC)
+Playbooks and roles for deployment on Open Telekom Cloud IaaS (OTC)
 
 ## what you need
 - ansible control host with internet access (preferably linuxOS)
