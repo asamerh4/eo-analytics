@@ -1,0 +1,497 @@
+---
+#FACTS0
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  roles:
+    - token
+    - vpc
+    - vpc_facts
+
+#CREATE VPC
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  roles:
+    - { role: vpc_create,
+          vpc_name: "{{ vpc_toplevel_name }}",
+          vpc_net: "{{ vpc_cidr }}",
+          when: vpc_fact|length == 0
+      }
+
+#FACTS1
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  roles:
+    - vpc
+    - vpc_facts
+    - subnet
+    - subnet_facts
+    
+#CREATE SUBNET
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  roles:
+    - { role: subnet_create,
+          subnet_name: "{{ cluster_id }}",
+          subnet_net: "{{ subnet_cidr }}",
+          subnet_gateway: "{{ subnet_gate }}",
+          subnet_primary_dns: "{{ subnet_dns1 }}",
+          subnet_secondary_dns: "{{ subnet_dns2 }}",
+          vpc_id: "{{ vpc_fact[0] }}",
+          when: subnet_fact|length == 0
+      }
+    - subnet
+    - subnet_facts
+    - vpc_subnet_router_facts
+    - { role: vpc_subnet_router_update,
+          when: routes_fact|length == 0
+      }
+
+#FACTS2
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  roles:
+    - vpc
+    - vpc_facts
+    - subnet
+    - subnet_facts
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  roles:
+    - {role: secgroups, vpc_id: "{{ vpc_fact[0] }}"}
+    - securitygroup_facts
+    - ecs
+    - eip
+    - server_facts
+    - autoscaling_facts
+
+#CREATE SECGROUPS
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  roles:
+#SECGROUP-PUBLIC
+    - { role: secgroup_create,
+          secgroup_name: "{{ cluster_id }}-public",
+          when: secfact_public|length == 0
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "ingress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_protocol: "tcp",
+          secgrouprule_port_range_min: "22",
+          secgrouprule_port_range_max: "22",
+          secgrouprule_remote_ip_prefix: "0.0.0.0/0",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_public|length == 0
+          
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "ingress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_protocol: "tcp",
+          secgrouprule_port_range_min: "443",
+          secgrouprule_port_range_max: "443",
+          secgrouprule_remote_ip_prefix: "0.0.0.0/0",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_public|length == 0 
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "ingress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_protocol: "",
+          secgrouprule_port_range_min: "",
+          secgrouprule_port_range_max: "",
+          secgrouprule_remote_ip_prefix: "{{ subnet_cidr }}",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_public|length == 0
+          
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "egress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_remote_ip_prefix: "0.0.0.0/0",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_public|length == 0
+          
+      }
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  roles:
+#SECGROUP-ZOOKEEPER
+    - { role: secgroup_create,         
+          secgroup_name: "{{ cluster_id }}-zookeeper",
+          when: secfact_zoo|length == 0
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "ingress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_protocol: "tcp",
+          secgrouprule_port_range_min: "2181",
+          secgrouprule_port_range_max: "2181",
+          secgrouprule_remote_ip_prefix: "{{ subnet_cidr }}",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_zoo|length == 0
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "ingress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_protocol: "tcp",
+          secgrouprule_port_range_min: "2888",
+          secgrouprule_port_range_max: "2888",
+          secgrouprule_remote_ip_prefix: "{{ subnet_cidr }}",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_zoo|length == 0
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "ingress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_protocol: "tcp",
+          secgrouprule_port_range_min: "3888",
+          secgrouprule_port_range_max: "3888",
+          secgrouprule_remote_ip_prefix: "{{ subnet_cidr }}",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_zoo|length == 0
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "egress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_remote_ip_prefix: "0.0.0.0/0",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_zoo|length == 0
+      }
+
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  roles:
+#SECGROUP-MASTER
+    - { role: secgroup_create,         
+          secgroup_name: "{{ cluster_id }}-master",
+          when: secfact_master|length == 0
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "ingress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_protocol: "tcp",
+          secgrouprule_port_range_min: "5050",
+          secgrouprule_port_range_max: "5050",
+          secgrouprule_remote_ip_prefix: "{{ subnet_cidr }}",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_master|length == 0
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "ingress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_protocol: "tcp",
+          secgrouprule_port_range_min: "19999",
+          secgrouprule_port_range_max: "19999",
+          secgrouprule_remote_ip_prefix: "{{ subnet_cidr }}",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_master|length == 0
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "ingress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_protocol: "tcp",
+          secgrouprule_port_range_min: "39999",
+          secgrouprule_port_range_max: "39999",
+          secgrouprule_remote_ip_prefix: "{{ subnet_cidr }}",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_master|length == 0
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "egress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_remote_ip_prefix: "0.0.0.0/0",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_master|length == 0
+      }
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  roles:
+#SECGROUP-AGENT
+    - { role: secgroup_create,         
+          secgroup_name: "{{ cluster_id }}-agent",
+          when: secfact_agent|length == 0
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "ingress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_protocol: "tcp",
+          secgrouprule_port_range_min: "22",
+          secgrouprule_port_range_max: "22",
+          secgrouprule_remote_ip_prefix: "{{ subnet_cidr }}",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_agent|length == 0
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "ingress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_protocol: "tcp",
+          secgrouprule_port_range_min: "1024",
+          secgrouprule_port_range_max: "60000",
+          secgrouprule_remote_ip_prefix: "{{ subnet_cidr }}",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_master|length == 0
+      }
+    - { role: secgrouprule_create,
+          secgrouprule_direction: "egress",
+          secgrouprule_ethertype: "IPv4",
+          secgrouprule_remote_ip_prefix: "0.0.0.0/0",
+          secgroup_id: "{{ secgroup['json']['security_group']['id'] }}",
+          when: secfact_agent|length == 0
+      }
+ 
+
+#CREATE MASTER, JENKINS & ZOOKEEPER VM
+- hosts: localhost
+  vars:
+    ecs_user_data: |
+      #cloud-config
+      runcmd:
+        ## NATing for agents - TBD
+        - echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf
+        - echo 'IPADDR1={{ vpc_nexthop_ip }}' >> /etc/sysconfig/network-scripts/ifcfg-eth
+        - systemctl restart network
+        - iptables -t nat -A POSTROUTING \! -d {{ subnet_cidr }} -o eth0 -j MASQUERADE
+        - systemctl enable iptables
+        - service iptables save
+        ## Alluxio Master config
+        - groupadd alluxio-rw
+        - usermod -aG alluxio-rw linux
+        - echo alluxio.master.hostname=$(hostname -I | cut -d" " -f 1)             > /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.underfs.address={{ alluxio_underfs_s3 }}                   >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.underfs.s3.threads.max=200                                 >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.security.authorization.permission.supergroup=alluxio-rw    >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.underfs.s3.endpoint=https://obs.eu-de.otc.t-systems.com    >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.user.block.size.bytes.default={{ alluxio_block_size }}     >> /opt/alluxio/conf/alluxio-site.properties
+        - echo aws.accessKeyId={{ aws_access_key_id }}                            >> /opt/alluxio/conf/alluxio-site.properties
+        - echo aws.secretKey={{ aws_secret_access_key }}                          >> /opt/alluxio/conf/alluxio-site.properties
+        ## Jenkins conf - TBD (add seperate jenkins user)
+        #- mkdir /var/lib/jenkins
+        #- cp -R /home/linux/.jenkins/plugins /var/lib/jenkins/
+        #- chown -R linux:linux /var/lib/jenkins
+        #- chown -R linux:linux /var/cache/jenkins
+        #- chown -R linux:linux /var/log/jenkins
+        #- systemctl start jenkins
+        #- systemctl enable jenkins
+        ## Instance-Metadata proxy cache
+        - sed -i 's;XXX_TITLE_XXXX;'{{ cluster_id }}';g' /usr/share/nginx/html/index.html
+        ## alluxio master and proxy service
+        - systemctl start alluxio-master
+        - systemctl enable alluxio-master
+        - systemctl start alluxio-proxy
+        - systemctl enable alluxio-proxy
+      write_files:
+        ## set OTC-S3 credentials
+        - content: |
+            [default]
+            output = json
+            region = eu-de
+          owner: linux:linux
+          permissions: '0644'
+          path: /home/linux/.aws/config
+        - content: |
+            [default]
+            aws_access_key_id = {{ aws_access_key_id }}
+            aws_secret_access_key = {{ aws_secret_access_key }}
+          owner: linux:linux
+          permissions: '0644'
+          path: /home/linux/.aws/credentials
+
+  roles:
+    - {role: secgroups, vpc_id: "{{ vpc_fact[0] }}"}
+    - securitygroup_facts
+    - { role: ecs_create,
+          ecs_name: "{{ cluster_id }}-master",
+          ecs_volumesize: "{{ ecs_disk_size }}",
+          ecs_volumetype: "{{ ecs_disk_type }}",
+          flavor_id: "{{ ecs_flavour }}",
+          secgroup_ids: '[{"id": "{{ secfact_public[0] }}"},{"id": "{{ secfact_master[0] }}"},{"id": "{{ secfact_zoo[0] }}"}]',
+          ecs_ipaddress: "",
+          vpc_id: "{{ vpc_fact[0] }}",
+          subnet_id: "{{ subnet_fact[0] }}",
+          ecs_adminpass: "",
+          ecs_adminkey: "{{ otc_ssh_key_name }}",
+          when: master_public_ip is not defined
+      }
+  tasks:
+  - name: wait for 5 minutes (ECS)
+    pause:
+      minutes: 5
+    when: master_public_ip is not defined
+
+
+#Populate Inventory    
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  roles:
+    - {role: secgroups, vpc_id: "{{ vpc_fact[0] }}"}
+    - securitygroup_facts
+    - ecs
+    - eip
+    - server_facts
+  tasks:  
+  - include: populate_otc_inventory.yml
+
+#SW-config of MASTER&ZOOKEEPER
+- hosts: mesos-masters
+  remote_user: "{{ remote_user }}"
+  become: yes
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  tasks:
+  - name: RAMDISK in /var/lib/docker
+    mount: name=/var/lib/docker src='tmpfs' fstype=tmpfs opts='size={{ ramdisk_gb }}g' state=mounted
+  - name: RAMDISK in /var/lib/mesos
+    mount: name=/var/lib/mesos src='tmpfs' fstype=tmpfs opts='size={{ ramdisk_gb }}g' state=mounted 
+  - name: RAMDISK in /var/log/mesos
+    mount: name=/var/log/mesos src='tmpfs' fstype=tmpfs opts='size={{ ramdisk_gb }}g' state=mounted
+  - name: Restart docker engine
+    service: name=docker state=started enabled=yes
+  #NGINX-ssl conf.d
+  - name: nginx public ssl dashboard conf.d
+    copy:
+      src: ../templates/nginx_dashboards/conf.d/ssl.conf
+      dest: /etc/nginx/conf.d/ssl.conf
+  - name: restart nginx
+    service: name=nginx state=restarted enabled=yes
+  #ZEPPELIN-PREP
+  - name: copy zeppelin postinstall scripts
+    copy:
+      src: ../templates/zeppelin/
+      dest: /home/linux/
+
+- hosts: public-zk-nodes
+  remote_user: "{{ remote_user }}"
+  become: yes
+  pre_tasks:
+    - include_vars: ../defaults/main.yml
+    - include_vars: ../vars/main.yml
+  roles:
+    - { role: zookeeper }
+
+- hosts: mesos-masters
+  remote_user: "{{ remote_user }}"
+  become: yes
+  pre_tasks:
+    - include_vars: ../roles/mesos/defaults/main.yml
+  roles:
+    - { role: mesos, mesos_install_mode: master, mesos_port: 5050 }
+
+
+
+#CREATE AGENT AUTOSCALING GROUP
+- hosts: localhost
+  vars:
+    agent_asconfig_userdata: |
+      #cloud-config
+      write_files:
+        ## set OTC-S3 credentials
+        - content: |
+            [default]
+            output = json
+            region = eu-de
+          owner: linux:linux
+          permissions: '0644'
+          path: /home/linux/.aws/config
+        - content: |
+            [default]
+            aws_access_key_id = {{ aws_access_key_id }}
+            aws_secret_access_key = {{ aws_secret_access_key }}
+          owner: linux:linux
+          permissions: '0644'
+          path: /home/linux/.aws/credentials
+      runcmd:
+        ## Alluxio RAMFS -> no swap
+        - mkdir /var/lib/alluxio
+        - mount -t ramfs -o size={{ alluxio_ramfs_size_gb_std }}G ramfs /var/lib/alluxio
+        - chmod a+w /var/lib/alluxio
+        - echo 'ramfs /var/lib/alluxio ramfs size={{ alluxio_ramfs_size_gb_std }}g 0 0' >> /etc/fstab
+        ## Alluxio Worker config
+        - groupadd alluxio-rw
+        - usermod -aG alluxio-rw linux
+        - echo alluxio.worker.hostname=$(hostname -I | cut -d" " -f 1)             > /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.master.hostname={{ master_private_ip }}                    >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.worker.memory.size={{ alluxio_ramfs_size_gb_std }}GB       >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.worker.tieredstore.level0.dirs.path=/var/lib/alluxio       >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.underfs.address={{ alluxio_underfs_s3 }}                   >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.underfs.s3.threads.max=200                                 >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.security.authorization.permission.supergroup=alluxio-rw    >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.underfs.s3.endpoint=https://obs.eu-de.otc.t-systems.com    >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.user.block.size.bytes.default={{ alluxio_block_size }}     >> /opt/alluxio/conf/alluxio-site.properties
+        - echo aws.accessKeyId={{ aws_access_key_id }}                            >> /opt/alluxio/conf/alluxio-site.properties
+        - echo aws.secretKey={{ aws_secret_access_key }}                          >> /opt/alluxio/conf/alluxio-site.properties
+        ## docker & mesos TMPFS -> swap in case of fillup (tbd.)
+        - mount -t tmpfs -o size=10g tmpfs /var/lib/docker
+        - mount -t tmpfs -o size=10g tmpfs /var/lib/mesos
+        - mount -t tmpfs -o size=10g tmpfs /var/log/mesos
+        - echo 'tmpfs /var/lib/docker tmpfs size=10g 0 0'                         >> /etc/fstab
+        - echo 'tmpfs /var/lib/mesos tmpfs size=10g 0 0'                          >> /etc/fstab
+        - echo 'tmpfs /var/log/mesos tmpfs size=10g 0 0'                          >> /etc/fstab
+        ## mesos-agent conf
+        - rm -rf /etc/mesos
+        - rm -rf /etc/mesos-master/
+        - rm -rf /etc/mesos-slave/
+        - rm /etc/default/mesos*
+        - echo 'CLUSTER="{{ cluster_id }}"'                                        > /etc/default/mesos
+        - echo 'IP="'$(hostname -I | cut -d" " -f 1)'"'                           >> /etc/default/mesos
+        - echo 'LOGS="/var/log/mesos"'                                            >> /etc/default/mesos
+        - echo 'ULIMIT="-n 8192"'                                                 >> /etc/default/mesos
+        - echo 'ZK="zk://{{ master_private_ip }}:2181/mesos"'                     >> /etc/default/mesos
+        - echo 'export MESOS_HOSTNAME="'$(hostname -I | cut -d" " -f 1)'"'         > /etc/default/mesos-slave
+        - echo 'export MESOS_MASTER="zk://{{ master_private_ip }}:2181/mesos"'    >> /etc/default/mesos-slave
+        - echo 'export MESOS_CONTAINERIZERS="docker,mesos"'                       >> /etc/default/mesos-slave
+        - echo 'export MESOS_EXECUTOR_REGISTRATION_TIMEOUT="5mins"'               >> /etc/default/mesos-slave
+        - echo 'export MESOS_PORT="5051"'                                         >> /etc/default/mesos-slave
+        - echo 'export MESOS_WORK_DIR="/var/lib/mesos"'                           >> /etc/default/mesos-slave
+        - echo 'export MESOS_DOCKER_REMOVE_DELAY="5mins"'                         >> /etc/default/mesos-slave
+        ## docker & mesos-agent service
+        - systemctl start docker
+        - systemctl enable docker
+        - systemctl start mesos-slave
+        - systemctl enable mesos-slave
+        ## alluxio worker and proxy service
+        - systemctl start alluxio-worker
+        - systemctl enable alluxio-worker
+        - systemctl start alluxio-proxy
+        - systemctl enable alluxio-proxy
+        ## spark-shuffle service
+        - systemctl start spark-shuffle
+        - systemctl enable spark-shuffle
+        ## Instance-Metadata proxy cache
+        - systemctl start nginx
+        - systemctl enable nginx
+  roles:   
+    - { role: asconfig_create,
+          asconfig_name: "{{ cluster_id }}",
+          flavor: "{{ ecs_flavour }}",
+          #image_id: from vars
+          disk_size: "{{ ecs_disk_size }}",
+          disk_type: "{{ ecs_disk_type }}",
+          key: "{{ otc_ssh_key_name }}",
+          userdata: "{{ agent_asconfig_userdata }}",
+          when: asconfigs_fact|length == 0
+      }
+    - { role: asgroup_create,
+          asgroup_name: "{{ cluster_id }}",
+          asconfig_id: "{{ asconfig['json']['scaling_configuration_id'] }}",
+          desired: "1",
+          min: "0",
+          max: "1",
+          cooldown: "200",
+          vpc_id: "{{ vpc_fact[0] }}",
+          subnet_id: "{{ subnet_fact[0] }}",
+          secgroups: '[{"id": "{{ secfact_agent[0] }}"}]',
+          when: asgroups_fact|length == 0
+      }
+    - vpc_disable_checks

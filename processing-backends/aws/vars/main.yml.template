@@ -1,0 +1,45 @@
+---
+######################################################
+###################Edit HERE!!! - START###############
+
+#your aws credentials
+aws_access_key_id: xxxxxxxxxxxxxx
+aws_secret_access_key: xxxxxxxxxxxxx
+
+#name of cluster
+cluster_id: "{{ cluster_id }}"
+
+#ec2 instance type
+ec2_flavour: r4.large
+
+#ansible-created image (produced from createAMI.sh)
+image_id: xxxxxxxxxxxx
+
+#your prepared role in aws-iam-console for e.g. permissions on buckets
+#used for e.g. s3-access from worker nodes without a need to provide credentials
+iam_role: xxxxxxxxxxxx
+
+
+##################Edit HERE!!! - END##################
+######################################################
+
+alluxio_block_size: "{{ alluxio_block_size }}"
+alluxio_underfs_s3: "{{ alluxio_underfs_s3 }}"
+alluxio_ramfs_size_gb_std: 12
+alluxio_ramfs_size_gb_big: 100
+aws_region: eu-central-1
+aws_subnet_az: eu-central-1b
+ec2_disk_size: 10
+base_image_id: ami-337be65c
+mesos_cluster_name: "{{ cluster_id }}"
+aws_ssh_key_name: "{{ aws_ssh_key_name }}"
+ramdisk_gb: 10
+subnet_cidr_masters: 192.168.0.0/24
+subnet_cidr_agents: 192.168.1.0/24
+subnet_cidr_templates: 192.168.2.0/24
+subnet_dns1: 100.125.4.25
+subnet_dns2: 8.8.8.8
+subnet_gate: 192.168.0.1
+vpc_cidr: 192.168.0.0/16
+vpc_nexthop_ip: 192.168.0.200
+vpc_toplevel_name: "{{ cluster_id }}"

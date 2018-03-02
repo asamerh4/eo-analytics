@@ -1,0 +1,462 @@
+---
+#prerequisite steps:
+#pip install --upgrade pip
+#pip install awscli certifi boto boto3
+#pip install --upgrade Jinja2
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+    #- include: populate_inventory.yml
+  tasks:
+  - name: Create the Mesos VPC
+    ec2_vpc_net:
+      name: "{{ vpc_toplevel_name }}"
+      cidr_block: "{{ vpc_cidr }}"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      tenancy: default
+    register: vpc
+
+  - name: Create igw
+    ec2_vpc_igw:
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      state: present
+    register: igw
+
+  - name: Create master subnet
+    ec2_vpc_subnet:
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      tags:
+        Name: "{{ cluster_id }}-masters"
+      state: present
+      vpc_id: "{{ vpc.vpc.id }}"
+      cidr: "{{ subnet_cidr_masters }}"
+      az: "{{ aws_subnet_az }}"
+    register: subnet_master
+
+  - name: Create nat gateway
+    ec2_vpc_nat_gateway:
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      state: present
+      subnet_id: "{{ subnet_master.subnet.id }}"
+      wait: yes
+      if_exist_do_not_create: true
+    register: nat_gateway
+
+  - name: Create agent subnet
+    ec2_vpc_subnet:
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      tags:
+        Name: "{{ cluster_id }}-agents"
+      state: present
+      vpc_id: "{{ vpc.vpc.id }}"
+      cidr: "{{ subnet_cidr_agents }}"
+      az: "{{ aws_subnet_az }}"
+    register: subnet_agent
+  
+  #- debug: msg="{{ subnet }}"
+  
+  - name: Set up masters route table
+    ec2_vpc_route_table:
+      vpc_id: "{{ vpc.vpc.id }}"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      tags:
+        Name: "{{ cluster_id }}-masters"
+      subnets:
+        - "{{ subnet_cidr_masters }}"
+      routes:
+        - dest: 0.0.0.0/0
+          gateway_id: "{{ igw.gateway_id }}"
+    register: route_table_masters  
+
+  - name: Set up agents route table
+    ec2_vpc_route_table:
+      vpc_id: "{{ vpc.vpc.id }}"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      tags:
+        Name: "{{ cluster_id }}-agents"
+      subnets:
+        - "{{ subnet_cidr_agents }}"
+      routes:
+        - dest: 0.0.0.0/0
+          gateway_id: "{{ nat_gateway.nat_gateway_id }}"
+    register: route_table_agents
+
+  - name: Gather route table facts
+    ec2_vpc_route_table_facts:
+      region: "{{ aws_region }}"
+      filters:
+        vpc-id: "{{ vpc.vpc.id }}"
+        "tag:Name": "{{ cluster_id }}-masters"
+    register: rtb_facts_masters
+
+  - name: Gather route table facts
+    ec2_vpc_route_table_facts:
+      region: "{{ aws_region }}"
+      filters:
+        vpc-id: "{{ vpc.vpc.id }}"
+        "tag:Name": "{{ cluster_id }}-agents"
+    register: rtb_facts_agents
+  
+  #- debug: msg="{{ rtb_facts }}"
+  
+  - name: Create VPC S3-Endpoint
+    command: aws ec2 create-vpc-endpoint --vpc-id "{{ vpc.vpc.id }}" --service-name com.amazonaws.{{ aws_region }}.s3 --route-table-ids {{ rtb_facts_masters.route_tables[0].id }} {{ rtb_facts_agents.route_tables[0].id }} --output json
+    ignore_errors: yes
+
+  - name: Create the public security group
+    ec2_group:
+      name: "{{ cluster_id }}-public"
+      description: "public sec group"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      purge_rules: yes
+      purge_rules_egress: yes
+      rules:
+        - proto: tcp
+          from_port: 22
+          to_port: 22
+          cidr_ip: "0.0.0.0/0"
+        - proto: tcp
+          from_port: 443
+          to_port: 443
+          cidr_ip: "0.0.0.0/0"
+        - proto: tcp
+          from_port: 1024
+          to_port: 60000
+          cidr_ip: "{{ subnet_cidr_agents }}"
+
+  - name: Create the zookeeper security group
+    ec2_group:
+      name: "{{ cluster_id }}-zookeeper"
+      description: "zookeeper sec group"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      purge_rules: yes
+      purge_rules_egress: yes
+      rules:
+        - proto: tcp
+          from_port: 2181
+          to_port: 2181
+          cidr_ip: "{{ subnet_cidr_agents }}"
+        - proto: tcp
+          from_port: 2888
+          to_port: 2888
+          cidr_ip: "{{ subnet_cidr_agents }}"
+        - proto: tcp
+          from_port: 3888
+          to_port: 3888
+          cidr_ip: "{{ subnet_cidr_agents }}"
+  - name: Create the master security group
+    ec2_group:
+      name: "{{ cluster_id }}-master"
+      description: "mesos-master sec group"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      purge_rules: yes
+      purge_rules_egress: yes
+      rules:
+        - proto: tcp
+          from_port: 5050
+          to_port: 5050
+          cidr_ip: "{{ subnet_cidr_agents }}"
+        - proto: tcp
+          from_port: 19999
+          to_port: 19999
+          cidr_ip: "{{ subnet_cidr_agents }}"
+        - proto: tcp
+          from_port: 39999
+          to_port: 39999
+          cidr_ip: "{{ subnet_cidr_agents }}"
+  - name: Create the agent security group
+    ec2_group:
+      name: "{{ cluster_id }}-agent"
+      description: "mesos-agent sec group"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      purge_rules: yes
+      purge_rules_egress: yes
+      rules:
+        - proto: tcp
+          from_port: 22
+          to_port: 22
+          cidr_ip: "{{ subnet_cidr_masters }}"
+        - proto: tcp
+          from_port: 1024
+          to_port: 60000
+          cidr_ip: "{{ subnet_cidr_masters }}"
+
+  # - name: Create EFS
+    # # EFS provisioning
+    # efs:
+      # aws_access_key: "{{ aws_access_key_id }}"
+      # aws_secret_key: "{{ aws_secret_access_key }}"
+      # state: present
+      # name: refdata
+      # wait: yes
+      # tags:
+        # name: refdata
+        # purpose: base data needed by all agents
+      # targets:
+        # - subnet_id: "{{ subnet_agent.subnet.id }}"
+    # register: efs
+  # - debug: msg="{{ efs }}"
+#CREATE MASTER & ZOOKEEPER VM
+- hosts: localhost
+  vars:
+    ec2_user_data: |
+      #cloud-config
+      runcmd:
+        ## NATing for agents - TBD
+        #- echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf
+        #- echo 'IPADDR1={{ vpc_nexthop_ip }}' >> /etc/sysconfig/network-scripts/ifcfg-eth
+        #- systemctl restart network
+        #- iptables -t nat -A POSTROUTING \! -d {{ subnet_cidr_agents }} -o eth0 -j MASQUERADE
+        #- systemctl enable iptables
+        #- service iptables save
+        ## Alluxio Master config
+        - groupadd alluxio-rw
+        - usermod -aG alluxio-rw centos
+        - echo alluxio.master.hostname=$(hostname -I | cut -d" " -f 1)             > /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.underfs.address={{ alluxio_underfs_s3 }}                   >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.underfs.s3.threads.max=200                                 >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.security.authorization.permission.supergroup=alluxio-rw    >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.user.block.size.bytes.default={{ alluxio_block_size }}     >> /opt/alluxio/conf/alluxio-site.properties
+        - echo aws.accessKeyId={{ aws_access_key_id }}                            >> /opt/alluxio/conf/alluxio-site.properties
+        - echo aws.secretKey={{ aws_secret_access_key }}                          >> /opt/alluxio/conf/alluxio-site.properties
+        ## Instance-Metadata proxy cache
+        - sed -i 's;XXX_TITLE_XXXX;'{{ cluster_id }}';g' /usr/share/nginx/html/index.html
+        ## alluxio master and proxy service
+        - systemctl start alluxio-master
+        - systemctl enable alluxio-master
+        - systemctl start alluxio-proxy
+        - systemctl enable alluxio-proxy
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+    - include: populate_inventory.yml
+  tasks:
+  - name: Launch instance
+    ec2:
+      key_name: "{{ aws_ssh_key_name }}"
+      group: 
+       - "{{ cluster_id }}-public"
+       - "{{ cluster_id }}-master"
+       - "{{ cluster_id }}-zookeeper"
+      instance_type: "{{ ec2_flavour }}"
+      image: "{{ image_id }}"
+      wait: true
+      instance_tags:
+        Name: "{{ cluster_id }}-master"
+      exact_count: 1
+      source_dest_check: no
+      count_tag: Name
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      instance_profile_name: "{{ iam_role }}"
+      vpc_subnet_id: "{{ subnet_master.subnet.id }}"
+      assign_public_ip: yes
+      user_data: "{{ ec2_user_data }}"
+      volumes:
+      - device_name: /dev/sda1
+        delete_on_termination: true
+        volume_size: 10
+        device_type: io1
+        iops: 500
+    register: ec2
+    when: ec2_instance_facts.instances|length == 0
+  #- debug: msg="{{ ec2 }}"
+  
+  - name: Wait for SSH to come up
+    wait_for:
+      host: "{{ item.public_dns_name }}"
+      port: 22
+      delay: 60
+      timeout: 320
+      state: started
+    with_items: "{{ ec2.instances | rejectattr('state', 'equalto', 'terminated') | list }}"
+    when: ec2_instance_facts.instances|length == 0
+#TODO: pip install --upgrade Jinja2
+  - include: populate_inventory.yml
+      
+#SW-config of MASTER&ZOOKEEPER
+- hosts: mesos-masters
+  remote_user: "{{ remote_user }}"
+  become: yes
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+    - include_vars: ../roles/mesos/defaults/main.yml
+  tasks:
+  - name: RAMDISK in /var/lib/docker
+    mount: name=/var/lib/docker src='tmpfs' fstype=tmpfs opts='size={{ ramdisk_gb }}g' state=mounted
+  - name: RAMDISK in /var/lib/mesos
+    mount: name=/var/lib/mesos src='tmpfs' fstype=tmpfs opts='size={{ ramdisk_gb }}g' state=mounted 
+  - name: RAMDISK in /var/log/mesos
+    mount: name=/var/log/mesos src='tmpfs' fstype=tmpfs opts='size={{ ramdisk_gb }}g' state=mounted
+  - name: Restart docker engine
+    service: name=docker state=started enabled=yes
+  #NGINX-ssl conf.d
+  - name: nginx public ssl dashboard conf.d
+    copy:
+      src: ../templates/nginx_dashboards/conf.d/ssl.conf
+      dest: /etc/nginx/conf.d/ssl.conf
+  - name: restart nginx
+    service: name=nginx state=restarted enabled=yes
+  #ZEPPELIN-PREP
+  - name: copy zeppelin postinstall scripts
+    copy:
+      src: ../templates/zeppelin/
+      dest: /home/centos/
+
+- hosts: public-zk-nodes
+  remote_user: "{{ remote_user }}"
+  become: yes
+  pre_tasks:
+    #- include_vars: ../defaults/main.yml
+    - include_vars: ../vars/main.yml
+  roles:
+    - { role: zookeeper }
+
+- hosts: mesos-masters
+  remote_user: "{{ remote_user }}"
+  become: yes
+  pre_tasks:
+    - include_vars: ../roles/mesos/defaults/main.yml
+  roles:
+    - { role: mesos, mesos_install_mode: master, mesos_port: 5050 }
+######################AGENTS####################
+- hosts: localhost
+  vars:
+    master_private_ip: "{{ ec2_instance_facts.instances[0].private_ip_address }}"
+    agent_asconfig_userdata: |
+      #cloud-config
+      runcmd:
+        ## Alluxio RAMFS -> no swap
+        - mkdir /var/lib/alluxio
+        - mount -t ramfs -o size={{ alluxio_ramfs_size_gb_std }}G ramfs /var/lib/alluxio
+        - chmod a+w /var/lib/alluxio
+        - echo 'ramfs /var/lib/alluxio ramfs size={{ alluxio_ramfs_size_gb_std }}g 0 0' >> /etc/fstab
+        ## Alluxio Worker config
+        - groupadd alluxio-rw
+        - usermod -aG alluxio-rw centos
+        - echo alluxio.worker.hostname=$(hostname -I | cut -d" " -f 1)             > /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.master.hostname={{ master_private_ip }}                    >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.worker.memory.size={{ alluxio_ramfs_size_gb_std }}GB       >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.worker.tieredstore.level0.dirs.path=/var/lib/alluxio       >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.underfs.address={{ alluxio_underfs_s3 }}                   >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.underfs.s3.threads.max=200                                 >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.security.authorization.permission.supergroup=alluxio-rw    >> /opt/alluxio/conf/alluxio-site.properties
+        - echo alluxio.user.block.size.bytes.default={{ alluxio_block_size }}     >> /opt/alluxio/conf/alluxio-site.properties
+        - echo aws.accessKeyId={{ aws_access_key_id }}                            >> /opt/alluxio/conf/alluxio-site.properties
+        - echo aws.secretKey={{ aws_secret_access_key }}                          >> /opt/alluxio/conf/alluxio-site.properties
+        ## docker & mesos TMPFS -> swap in case of fillup (tbd.)
+        - mkdir /var/lib/docker
+        - mount -t tmpfs -o size=10g tmpfs /var/lib/docker
+        - mount -t tmpfs -o size=10g tmpfs /var/lib/mesos
+        - mount -t tmpfs -o size=10g tmpfs /var/log/mesos
+        - echo 'tmpfs /var/lib/docker tmpfs size=10g 0 0'                         >> /etc/fstab
+        - echo 'tmpfs /var/lib/mesos tmpfs size=10g 0 0'                          >> /etc/fstab
+        - echo 'tmpfs /var/log/mesos tmpfs size=10g 0 0'                          >> /etc/fstab
+        ## mesos-agent conf
+        - rm -rf /etc/mesos
+        - rm -rf /etc/mesos-master/
+        - rm -rf /etc/mesos-slave/
+        - rm /etc/default/mesos*
+        - echo 'CLUSTER="{{ cluster_id }}"'                                        > /etc/default/mesos
+        - echo 'IP="'$(hostname -I | cut -d" " -f 1)'"'                           >> /etc/default/mesos
+        - echo 'LOGS="/var/log/mesos"'                                            >> /etc/default/mesos
+        - echo 'ULIMIT="-n 8192"'                                                 >> /etc/default/mesos
+        - echo 'ZK="zk://{{ master_private_ip }}:2181/mesos"'                     >> /etc/default/mesos
+        - echo 'export MESOS_HOSTNAME="'$(hostname -I | cut -d" " -f 1)'"'         > /etc/default/mesos-slave
+        - echo 'export MESOS_MASTER="zk://{{ master_private_ip }}:2181/mesos"'    >> /etc/default/mesos-slave
+        - echo 'export MESOS_CONTAINERIZERS="docker,mesos"'                       >> /etc/default/mesos-slave
+        - echo 'export MESOS_EXECUTOR_REGISTRATION_TIMEOUT="5mins"'               >> /etc/default/mesos-slave
+        - echo 'export MESOS_PORT="5051"'                                         >> /etc/default/mesos-slave
+        - echo 'export MESOS_WORK_DIR="/var/lib/mesos"'                           >> /etc/default/mesos-slave
+        - echo 'export MESOS_DOCKER_REMOVE_DELAY="5mins"'                         >> /etc/default/mesos-slave
+        ## docker & mesos-agent service
+        - systemctl start docker
+        - systemctl enable docker
+        - systemctl start mesos-slave
+        - systemctl enable mesos-slave
+        ## alluxio worker and proxy service
+        - systemctl start alluxio-worker
+        - systemctl enable alluxio-worker
+        - systemctl start alluxio-proxy
+        - systemctl enable alluxio-proxy
+        ## spark-shuffle service
+        - systemctl start spark-shuffle
+        - systemctl enable spark-shuffle
+        ## Instance-Metadata proxy cache
+        - systemctl start nginx
+        - systemctl enable nginx
+  pre_tasks:
+    - include_vars: ../roles/mesos/defaults/main.yml
+    - include: populate_inventory.yml
+  tasks:
+    - name: Gather security group facts
+      ec2_group_facts:
+        region: "{{ aws_region }}"
+        filters:
+          group_name: 
+           - "{{ cluster_id }}-agent"
+      register: sg_facts
+    - name: Create Mesos Agent Launch Config
+      ec2_lc:
+        name: agent
+        aws_access_key: "{{ aws_access_key_id }}"
+        aws_secret_key: "{{ aws_secret_access_key }}"
+        region: "{{ aws_region }}"
+        key_name: mesos140
+        image_id: "{{ image_id }}"
+        instance_type: "{{ ec2_flavour }}"
+        instance_profile_name: "{{ iam_role }}"
+        state: present
+        security_groups: 
+          - "{{ sg_facts.security_groups[0].group_id }}"
+        volumes:
+          - device_name: /dev/sda1
+            volume_size: 10
+            device_type: io1
+            iops: 500
+            delete_on_termination: true
+        ebs_optimized: true
+        user_data: "{{ agent_asconfig_userdata }}"
+    - name: Create Mesos Agent Autoscaling Group
+      ec2_asg:
+        name: agents
+        state: present
+        aws_access_key: "{{ aws_access_key_id }}"
+        aws_secret_key: "{{ aws_secret_access_key }}"
+        region: "{{ aws_region }}"
+        availability_zones: [ "{{ aws_subnet_az }}" ]
+        launch_config_name: 'agent'
+        min_size: 0
+        max_size: 25
+        desired_capacity: 1
+        vpc_zone_identifier: [ "{{ subnet_agent.subnet.id }}" ]
+        tags:
+          - Name: "{{ cluster_id }}-agent"
+

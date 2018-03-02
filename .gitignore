@@ -1,0 +1,6 @@
+processing-backends/aws/vars/main.yml
+processing-backends/otc/vars/main.yml
+processing-backends/aws/tasks/*.retry
+processing-backends/otc/tasks/*.retry
+*.pyc
+

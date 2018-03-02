@@ -1,0 +1,15 @@
+- name: wait for 15 secs
+  pause:
+    seconds: 15
+  
+- name: Add Routes to Router
+  uri:
+    url: "{{ AUTH_URL_VPC }}/v2.0/routers/{{ router_fact[0] }}"
+    method: PUT
+    return_content: yes
+    validate_certs: yes
+    status_code: 200
+    body_format: json
+    body: "{{ lookup('template', '../templates/request.json.j2') }}"
+    HEADER_Content-Type: "application/json"
+    HEADER_X-Auth-Token: "{{ token['x_subject_token'] }}"

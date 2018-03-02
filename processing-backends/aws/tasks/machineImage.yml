@@ -1,0 +1,434 @@
+---
+#prerequisite steps:
+#pip install --upgrade pip
+#pip install awscli certifi boto boto3
+#pip install --upgrade Jinja2
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+    # Add any existing machines to the inventory.
+    - include: populate_inventory.yml
+  tasks:
+  - name: Create template VPC
+    ec2_vpc_net:
+      name: templates
+      cidr_block: "{{ vpc_cidr }}"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      tags:
+        module: ec2_vpc_net
+        this: works
+      tenancy: default
+    register: vpc
+
+  - name: Create igw
+    ec2_vpc_igw:
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      state: present
+    register: igw
+
+  - name: Create subnet
+    ec2_vpc_subnet:
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      state: present
+      vpc_id: "{{ vpc.vpc.id }}"
+      cidr: "{{ subnet_cidr_templates }}"
+      az: "{{ aws_subnet_az }}"
+    register: subnet
+  
+  #- debug: msg="{{ subnet }}"
+  
+  - name: Set up route table
+    ec2_vpc_route_table:
+      vpc_id: "{{ vpc.vpc.id }}"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      tags:
+        Name: template-rtb
+      subnets:
+        - "{{ subnet_cidr_templates }}"
+      routes:
+        - dest: 0.0.0.0/0
+          gateway_id: "{{ igw.gateway_id }}"
+    register: route_table    
+
+###################################################
+###################################################
+  - name: Create template security group
+    ec2_group:
+      name: "template"
+      description: "Template sec group"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      purge_rules: yes
+      purge_rules_egress: yes
+      rules:
+        - proto: tcp
+          from_port: 22
+          to_port: 22
+          cidr_ip: "0.0.0.0/0"
+
+  - name: Launch instance
+    ec2:
+      key_name: "{{ aws_ssh_key_name }}"
+      group: template
+      instance_type: "{{ ec2_flavour }}"
+      image: "{{ base_image_id }}"
+      wait: true
+      instance_tags:
+        Name: template
+      exact_count: 1
+      source_dest_check: no
+      count_tag: Name
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      instance_profile_name: ami-template
+      vpc_subnet_id: "{{ subnet.subnet.id }}"
+      assign_public_ip: yes
+      volumes:
+      - device_name: /dev/sda1
+        delete_on_termination: true
+        volume_size: 10
+        device_type: io1
+        iops: 500
+    register: ec2
+  #- debug: msg="{{ ec2 }}"
+  
+  - name: Wait for SSH to come up
+    wait_for:
+      host: "{{ item.public_dns_name }}"
+      port: 22
+      delay: 60
+      timeout: 320
+      state: started
+    with_items: "{{ ec2.instances | rejectattr('state', 'equalto', 'terminated') | list }}"
+#TODO: pip install --upgrade Jinja2
+  - include: populate_inventory.yml
+###############################################################################################
+#IMAGE SW-CONF
+#TODO: provide all artifacts (tar.gz's from mirrors) in some s3-bucket
+- hosts: template
+  remote_user: "{{ remote_user }}"
+  become: yes
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  tasks:
+  #SELINUX OFF
+  - name: disable selinux
+    selinux: state=disabled
+  - name: clear tmp-dirs
+    command: rm -rf /tmp/*
+  #DOCKER REPO
+  - name: add docker repo
+    yum_repository:
+      description: docker-repository
+      name: docker-repository
+      baseurl: https://yum.dockerproject.org/repo/main/centos/7/
+      enabled: yes
+      gpgcheck: yes
+      gpgkey: https://yum.dockerproject.org/gpg
+  #DOCKER SYSTEMD
+  - name: create systemd conf-dir for docker
+    file: name=/etc/systemd/system/docker.service.d state=directory
+  - name: docker loopback-devicemapper storage-conf
+    blockinfile:
+      dest: /etc/systemd/system/docker.service.d/docker-storage.conf
+      create: yes
+      block: |
+        [Service]
+        ExecStart=
+        ExecStart=/usr/bin/dockerd -s devicemapper --storage-opt dm.loopdatasize=350G --storage-opt dm.basesize=25G --storage-opt dm.loopmetadatasize=4G
+  #EPEL
+  - name: install epel
+    yum: name=epel-release
+  #DOCKER, PIP, NGINX & tools
+  - name: install docker-engine & other tools
+    yum: name=docker-engine-17.05.0.ce-1.el7.centos.x86_64,firewalld,iptables-services,htop,python-pip,nginx,httpd-tools,git,wget,nfs-utils
+  - name: awscli
+    pip: name=awscli,certifi
+  #FIREWALLD OFF
+  - name: disable firewalld
+    service: name=firewalld state=stopped enabled=no
+  #DISABLE docker
+  - name: disable docker service
+    service: name=docker state=stopped enabled=no
+  - name: add centos user to docker group
+    user: name=centos groups=docker append=yes
+  - name: disable nginx service
+    service: name=nginx state=stopped enabled=no
+  - name: disable iptables service
+    service: name=iptables state=stopped enabled=no
+  #MESOS
+  - name: add mesosphere repo
+    yum: name=http://repos.mesosphere.com/el/7/noarch/RPMS/mesosphere-el-repo-7-3.noarch.rpm state=present
+  - name: install mesos 1.5.0
+    yum: name=mesos
+  - name: disable mesos-master
+    service: name=mesos-master state=stopped enabled=no
+  - name: disable mesos-agent
+    service: name=mesos-slave state=stopped enabled=no
+  #ZOOKEEPER-prep (installed to /opt/zookeeper-X.X.X) -> systemd gen & zk-config within zookeeper role, when image is used as a mesos-master
+  - name: stat
+    stat: path=/opt/zookeeper-3.4.11/bin
+    register: stat_zoo
+  - name: create zk-dir
+    file: path=/opt/zookeeper-3.4.11 state=directory
+  - name: Download zookeeper
+    get_url:
+      url: http://www.us.apache.org/dist/zookeeper/zookeeper-3.4.11/zookeeper-3.4.11.tar.gz 
+      dest: /home/centos/zookeeper-3.4.11.tar.gz
+    when: stat_zoo.stat.exists == False
+  - name: Unpack tarball.
+    command: tar zxf /home/centos/zookeeper-3.4.11.tar.gz --strip-components=1 chdir=/opt/zookeeper-3.4.11 creates=/opt/zookeeper-3.4.11/bin
+    when: stat_zoo.stat.exists == False
+  - name: cleanup
+    file: name=/home/centos/zookeeper-3.4.11.tar.gz state=absent
+  #JAVA
+  - name: install jdk 8
+    yum: name=java-1.8.0-openjdk-devel
+  #ALLUXIO
+  - name: stat
+    stat: path=/opt/alluxio
+    register: stat
+  - name: download alluxio 1.6.1
+    get_url:
+      url: http://support.brightcomputing.com/bigdata/alluxio-1.6.1-hadoop-2.8-bin.tar.gz
+      dest: /home/centos/alluxio.tar.gz
+    when: stat.stat.exists == False
+  - name: unpack alluxio
+    command: tar xzf /home/centos/alluxio.tar.gz chdir=/opt
+    when: stat.stat.exists == False
+    
+  - name: move alluxio to /opt
+    command: mv /opt/alluxio-1.6.1-hadoop-2.8 /opt/alluxio
+    when: stat.stat.exists == False
+  
+  - name: cleanup
+    file: name=/home/centos/alluxio.tar.gz state=absent
+ 
+  - name: create alluxio-systemd scripts
+    file: name=/usr/lib/systemd/system/alluxio-master.service state=touch
+  - name: create alluxio-systemd scripts
+    file: name=/usr/lib/systemd/system/alluxio-worker.service state=touch
+  - name: create alluxio-systemd scripts
+    file: name=/usr/lib/systemd/system/alluxio-proxy.service state=touch
+  - name: alluxio-master systemd
+    blockinfile:
+      dest: /usr/lib/systemd/system/alluxio-master.service
+      block: |
+        [Unit]
+        Description=Alluxio Master
+        After=network.target
+        [Service]
+        Type=forking
+        User=alluxio
+        Group=alluxio
+        ExecStart=/opt/alluxio/bin/alluxio-start.sh master
+        ExecStop=/opt/alluxio/bin/alluxio-stop.sh master
+        WorkingDirectory=/opt/alluxio
+        [Install]
+        WantedBy=multi-user.target
+  - name: alluxio-worker systemd
+    blockinfile:
+      dest: /usr/lib/systemd/system/alluxio-worker.service
+      block: |
+        [Unit]
+        Description=Alluxio Worker
+        After=network.target
+        [Service]
+        Type=forking
+        User=alluxio
+        Group=alluxio
+        ExecStart=/opt/alluxio/bin/alluxio-start.sh worker NoMount
+        ExecStop=/opt/alluxio/bin/alluxio-stop.sh worker
+        WorkingDirectory=/opt/alluxio
+        [Install]
+        WantedBy=multi-user.target
+  - name: alluxio-proxy systemd
+    blockinfile:
+      dest: /usr/lib/systemd/system/alluxio-proxy.service
+      block: |
+        [Unit]
+        Description=Alluxio Proxy
+        After=network.target
+        [Service]
+        Type=forking
+        User=alluxio
+        Group=alluxio
+        ExecStart=/opt/alluxio/bin/alluxio-start.sh proxy
+        ExecStop=/opt/alluxio/bin/alluxio-stop.sh proxy
+        WorkingDirectory=/opt/alluxio
+        [Install]
+        WantedBy=multi-user.target
+  - name: disable alluxio-master
+    service: name=alluxio-master state=stopped enabled=no
+  - name: disable alluxio-worker
+    service: name=alluxio-worker state=stopped enabled=no
+  - name: disable alluxio-proxy
+    service: name=alluxio-proxy state=stopped enabled=no
+  #SPARK
+  - name: spark stat
+    stat: path=/opt/spark
+    register: spark_stat
+  - name: download spark 2.2.0
+    get_url:
+      url: ftp://mirror.netcologne.de/apache.org/spark/spark-2.2.0/spark-2.2.0-bin-hadoop2.7.tgz
+      dest: /home/centos/spark-2.2.0-bin-hadoop2.7.tgz
+    when: spark_stat.stat.exists == False
+  - name: unpack spark
+    command: tar xzf /home/centos/spark-2.2.0-bin-hadoop2.7.tgz chdir=/opt
+    when: spark_stat.stat.exists == False   
+  - name: move spark to /opt
+    command: mv /opt/spark-2.2.0-bin-hadoop2.7 /opt/spark
+    when: spark_stat.stat.exists == False
+  - name: cleanup
+    file: name=/home/centos/spark-2.2.0-bin-hadoop2.7.tgz state=absent
+ 
+  #SPARK & ALLUXIO default conf
+  - name: libmesos.so entry
+    lineinfile: dest=/opt/spark/conf/spark-env.sh create=yes line="export MESOS_NATIVE_JAVA_LIBRARY=/usr/lib/libmesos.so"
+  - name: spark-home entry
+    lineinfile: dest=/opt/spark/conf/spark-defaults.conf state=present create=yes line="spark.mesos.executor.home /opt/spark"
+  - name: spark-extra cores entry
+    lineinfile: dest=/opt/spark/conf/spark-defaults.conf state=present create=yes line="spark.mesos.extra.cores 2"
+  - name: use kryo serializer
+    lineinfile: dest=/opt/spark/conf/spark-defaults.conf state=present create=yes line="spark.serializer org.apache.spark.serializer.KryoSerializer"
+  - name: alluxio-client entry to spark-defaults (1)
+    lineinfile: dest=/opt/spark/conf/spark-defaults.conf state=present create=yes line="spark.driver.extraClassPath /opt/alluxio/client/default/alluxio-1.6.1-default-client.jar"
+  - name: alluxio-client entry to spark-defaults (2)
+    lineinfile: dest=/opt/spark/conf/spark-defaults.conf state=present create=yes line="spark.executor.extraClassPath /opt/alluxio/client/default/alluxio-1.6.1-default-client.jar"
+  - name: configure dynamic resource allocation prep (1)
+    lineinfile: dest=/opt/spark/conf/spark-defaults.conf state=present create=yes line="spark.dynamicAllocation.enabled false"
+  - name: configure dynamic resource allocation prep (2)
+    lineinfile: dest=/opt/spark/conf/spark-defaults.conf state=present create=yes line="spark.shuffle.service.enabled false"
+  - name: create spark-shuffle-systemd scripts
+    file: name=/usr/lib/systemd/system/spark-shuffle.service state=touch
+  - name: configure spark-mesos shuffle service
+    blockinfile:
+      dest: /usr/lib/systemd/system/spark-shuffle.service
+      block: |
+        [Unit]
+        Description=spark-mesos-shuffle service
+        After=network.target
+        [Service]
+        Type=forking
+        User=centos
+        Group=centos
+        ExecStart=/opt/spark/sbin/start-mesos-shuffle-service.sh
+        ExecStop=/opt/spark/sbin/stop-mesos-shuffle-service.sh
+        WorkingDirectory=/opt/spark
+        [Install]
+        WantedBy=multi-user.target
+  - name: disable spark-shuffle
+    service: name=spark-shuffle state=stopped enabled=no    
+  #CHOWN
+  - name: spark chown to user centos
+    command: chown -R centos:centos /opt/spark
+  - name: alluxio user
+    user:
+      name: alluxio
+  - name: alluxio chown to user alluxio
+    command: chown -R alluxio:alluxio /opt/alluxio
+  #NETWORK-ADAPTER-CFG
+  # - name: net_stat
+    # stat: path=/etc/sysconfig/network-scripts/ifcfg-eth
+    # register: net_stat
+  # - name: rename net-adapter
+    # command: mv /etc/sysconfig/network-scripts/ifcfg-eth0 /etc/sysconfig/network-scripts/ifcfg-eth
+    # when: net_stat.stat.exists == False
+  # - name: restart networking
+    # service: name=network state=restarted enabled=yes
+  #NGINX-HTMLs
+  - name: copy dashboard html-folder to /usr/share/nginx/html
+    copy:
+      src: ../templates/nginx_dashboards/html
+      dest: /usr/share/nginx
+  #NGINX-ssl-prep  #-->https://www.digitalocean.com/community/tutorials/how-to-create-a-self-signed-ssl-certificate-for-nginx-on-centos-7
+  - name: create ssl cert folder
+    file: path=/etc/ssl/private mode=0700 state=directory
+  - name: create self signed cert for nginx-ssl
+    command: openssl req -x509 -nodes -days 365 -newkey rsa:2048 -subj "/C=DE/ST=Bavaria/L=Wessling/O=DLR/CN=dlr.de" -keyout /etc/ssl/private/nginx-selfsigned.key -out /etc/ssl/certs/nginx-selfsigned.crt
+  - name: create a strong Diffie-Hellman group
+    command: openssl dhparam -out /etc/ssl/certs/dhparam.pem 2048
+  #NGINX-conf
+  - name: nginx.conf cleanup
+    file: name=/etc/nginx/nginx.conf state=absent
+  - name: nginx.conf
+    copy:
+      src: ../templates/nginx_dashboards/nginx.conf
+      dest: /etc/nginx/nginx.conf
+  #NGINX-internal conf.d
+  - name: nginx internal conf.d
+    copy:
+      src: ../templates/nginx_dashboards/conf.d/internal.conf
+      dest: /etc/nginx/conf.d/internal.conf
+  #MOTD
+  - name: motd-cleanup
+    file: name=/etc/motd state=absent
+  - name: set nice motd welcome msg
+    blockinfile:
+      dest: /etc/motd
+      create: yes
+      block: |
+       ..   ___   ____    analytics base image
+       ..  / _ \ / __ \   centos7.4-mesos1.5.0-alluxio1.6.1-spark2.2.0
+       .. /  __// /_/ /   built for you on: {{ lookup('pipe','date') }}
+       .. \___/ \____/    github.com/asamerh4/eo-analytics
+      marker: " "
+  #CRONS
+  - name: daily-cron(centos) -> auto-register with aws-ecr
+    cron:
+      name: "get aws ecr login"
+      special_time: daily
+      job: "COMMAND=`eval aws ecr get-login --region eu-central-1` && echo `eval $COMMAND`"
+      user: centos
+  - name: daily-cron(root) -> auto-register with aws-ecr
+    cron:
+      name: "get aws ecr login"
+      special_time: daily
+      job: "COMMAND=`eval aws ecr get-login --region eu-central-1` && echo `eval $COMMAND`"
+      user: root
+
+  # IMAGE CREATION
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  tasks:
+  - name: facts
+    ec2_instance_facts:
+      filters:
+        "tag:Name": template
+        instance-state-name: running
+    register: ec2_facts
+
+  - name: create AMI
+    ec2_ami:
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      region: "{{ aws_region }}"
+      instance_id: "{{ ec2_facts.instances[0].instance_id }}"
+      wait: yes
+      name: "auto-centos7.4-docker1.17-mesos1.5.0-zk3.4.11-alluxio1.6.1-https-spark2.2.0-0009"
+      description: "ansible managed centos7.4 with docker engine 1.17, mesos 1.5.0, zookeeper 3.4.11, alluxio 1.6.1, spark 2.2.0, no firewalld, no selinux, all mentioned core services are disabled by default"
+    register: ami
+  - debug: msg="{{ ami }}"
+
+  # TERMINATE template
+  - name: Terminate instances that were previously launched
+    ec2:
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      region: "{{ aws_region }}"
+      state: 'absent'
+      instance_ids: '{{ ec2_facts.instances[0].instance_id }}'
+

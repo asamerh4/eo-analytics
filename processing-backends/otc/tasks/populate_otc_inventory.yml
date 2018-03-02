@@ -1,0 +1,24 @@
+---
+- name: Add private ZooKeeper hosts to inventory
+  add_host:
+    name: "{{ item }}"
+    groups: "private-zk-nodes"
+  with_items: "{{ master_private_ip }}"
+
+- name: Add public ZooKeeper hosts to inventory
+  add_host:
+    name: "{{ item }}"
+    groups: "public-zk-nodes"
+  with_items: "{{ master_public_ip }}"
+
+- name: Add new Mesos Master hosts to inventory
+  add_host:
+    name: "{{ item }}"
+    groups: "mesos-masters"
+  with_items: "{{ master_public_ip }}"
+
+- name: Add new Template hosts to inventory
+  add_host:
+    name: "{{ item }}"
+    groups: "template"
+  with_items: "{{ master_public_ip }}"

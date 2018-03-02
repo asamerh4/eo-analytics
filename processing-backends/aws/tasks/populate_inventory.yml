@@ -1,0 +1,33 @@
+---
+- name: Add private ZooKeeper hosts to inventory
+  add_host:
+    name: "{{ item }}"
+    groups: "private-zk-nodes"
+  with_items: "{{ aws_region | private_zk_nodes(mesos_cluster_name, aws_access_key_id, aws_secret_access_key) }}"
+
+- name: Add public ZooKeeper hosts to inventory
+  add_host:
+    name: "{{ item }}"
+    groups: "public-zk-nodes"
+  with_items: "{{ aws_region | public_zk_nodes(mesos_cluster_name, aws_access_key_id, aws_secret_access_key) }}"
+
+- name: Add new Mesos Master hosts to inventory
+  add_host:
+    name: "{{ item }}"
+    groups: "mesos-masters"
+  with_items: "{{ aws_region | mesos_master_nodes(mesos_cluster_name, aws_access_key_id, aws_secret_access_key) }}"
+
+- name: Add Template hosts to inventory
+  add_host:
+    name: "{{ item }}"
+    groups: "template"
+  with_items: "{{ aws_region | template_node(mesos_cluster_name, aws_access_key_id, aws_secret_access_key) }}"
+
+- name: ec2-facts, if any
+  ec2_instance_facts:
+    region: "{{ aws_region }}"
+    filters:
+      instance-state-name: running
+      "tag:Name": "{{ cluster_id }}-master"
+  register: ec2_instance_facts
+#- debug: msg="{{ ec2_instance_facts }}"
