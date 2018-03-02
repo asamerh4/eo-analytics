@@ -1,3 +1,3 @@
-combinded
+combined
 =========
 soon

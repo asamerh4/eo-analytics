@@ -53,8 +53,8 @@ To create VM's within OTC and ssh to them, you have to create a key-pair within 
 
 ### clone this repo to the control host
 ```bash
-git clone https://github.com/asamerh4/ansible-mesos.git
-cd ansible-mesos
+git clone https://github.com/asamerh4/eo-analytics.git
+cd eo-analytics/processing-backends/otc
 ```
 
 ### edit or create `vars/main.yml`
@@ -123,7 +123,7 @@ These components act as the single base of all subsequent generated VM-instances
 ### create cluster
 Now we have everything ready for creating a cluster with 1 master and 1 agent (=initial autoscaling group size)
 ```bash
-cd ansible-mesos
+cd processing-backends/otc
 python scripts/otc_deploy.py -z -m \
 # OTC-S3 bucket which is used as alluxio underFS
   -s3 "s3a://alluxio-tests/tests" \
@@ -203,6 +203,7 @@ VPC (192.168.0.0/16)
 |- subnet (192.168.0.0/24)
    |- public-group
    |  |-Inbound (TCP): port 22, 443 for remote end 0.0.0.0/0 (world)
+   |  |-Inbound (TCP): port 1024-60000 for remote end 192.168.0.0/24 (subnet)
    |  |-Outbound (Any): any port for remote end 0.0.0.0/0 (world)
    |
    |- master-group

@@ -425,7 +425,7 @@
       register: sg_facts
     - name: Create Mesos Agent Launch Config
       ec2_lc:
-        name: agent
+        name: "{{ cluster_id }}-agent"
         aws_access_key: "{{ aws_access_key_id }}"
         aws_secret_key: "{{ aws_secret_access_key }}"
         region: "{{ aws_region }}"
@@ -446,13 +446,13 @@
         user_data: "{{ agent_asconfig_userdata }}"
     - name: Create Mesos Agent Autoscaling Group
       ec2_asg:
-        name: agents
+        name: "{{ cluster_id }}-agents"
         state: present
         aws_access_key: "{{ aws_access_key_id }}"
         aws_secret_key: "{{ aws_secret_access_key }}"
         region: "{{ aws_region }}"
         availability_zones: [ "{{ aws_subnet_az }}" ]
-        launch_config_name: 'agent'
+        launch_config_name: "{{ cluster_id }}-agent"
         min_size: 0
         max_size: 25
         desired_capacity: 1
