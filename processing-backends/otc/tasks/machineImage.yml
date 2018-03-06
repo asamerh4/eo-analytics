@@ -399,7 +399,7 @@
        ..   ___   ____    analytics base image
        ..  / _ \ / __ \   centos7.4-mesos1.4.1-alluxio1.6.1-spark2.2.0
        .. /  __// /_/ /   built for you on: {{ lookup('pipe','date') }}
-       .. \___/ \____/    github.com/asamerh4/ansible-mesos
+       .. \___/ \____/    github.com/asamerh4/eo-analytics
       marker: " "
 
 # IMAGE CREATION
