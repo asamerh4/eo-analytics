@@ -12,6 +12,9 @@ cluster_id: "{{ cluster_id }}"
 #ec2 instance type
 ec2_flavour: r4.large
 
+#container ramdisk (e.g. for docker workdirs in /var/lib/docker) in GB (based on chosen ec2_flavour)
+container_ramdisk_gb: 14
+
 #ansible-created image (produced from createAMI.sh)
 image_id: xxxxxxxxxxxx
 
@@ -33,7 +36,6 @@ ec2_disk_size: 10
 base_image_id: ami-337be65c
 mesos_cluster_name: "{{ cluster_id }}"
 aws_ssh_key_name: "{{ aws_ssh_key_name }}"
-ramdisk_gb: 10
 subnet_cidr_masters: 192.168.0.0/24
 subnet_cidr_agents: 192.168.1.0/24
 subnet_cidr_templates: 192.168.2.0/24

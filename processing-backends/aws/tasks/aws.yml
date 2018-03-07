@@ -208,21 +208,6 @@
           to_port: 60000
           cidr_ip: "{{ subnet_cidr_masters }}"
 
-  # - name: Create EFS
-    # # EFS provisioning
-    # efs:
-      # aws_access_key: "{{ aws_access_key_id }}"
-      # aws_secret_key: "{{ aws_secret_access_key }}"
-      # state: present
-      # name: refdata
-      # wait: yes
-      # tags:
-        # name: refdata
-        # purpose: base data needed by all agents
-      # targets:
-        # - subnet_id: "{{ subnet_agent.subnet.id }}"
-    # register: efs
-  # - debug: msg="{{ efs }}"
 #CREATE MASTER & ZOOKEEPER VM
 - hosts: localhost
   vars:
@@ -310,11 +295,11 @@
     - include_vars: ../roles/mesos/defaults/main.yml
   tasks:
   - name: RAMDISK in /var/lib/docker
-    mount: name=/var/lib/docker src='tmpfs' fstype=tmpfs opts='size={{ ramdisk_gb }}g' state=mounted
+    mount: name=/var/lib/docker src='tmpfs' fstype=tmpfs opts='size={{ container_ramdisk_gb }}g' state=mounted
   - name: RAMDISK in /var/lib/mesos
-    mount: name=/var/lib/mesos src='tmpfs' fstype=tmpfs opts='size={{ ramdisk_gb }}g' state=mounted 
+    mount: name=/var/lib/mesos src='tmpfs' fstype=tmpfs opts='size={{ container_ramdisk_gb }}g' state=mounted 
   - name: RAMDISK in /var/log/mesos
-    mount: name=/var/log/mesos src='tmpfs' fstype=tmpfs opts='size={{ ramdisk_gb }}g' state=mounted
+    mount: name=/var/log/mesos src='tmpfs' fstype=tmpfs opts='size={{ container_ramdisk_gb }}g' state=mounted
   - name: Restart docker engine
     service: name=docker state=started enabled=yes
   #NGINX-ssl conf.d
@@ -371,14 +356,14 @@
         - echo alluxio.user.block.size.bytes.default={{ alluxio_block_size }}     >> /opt/alluxio/conf/alluxio-site.properties
         - echo aws.accessKeyId={{ aws_access_key_id }}                            >> /opt/alluxio/conf/alluxio-site.properties
         - echo aws.secretKey={{ aws_secret_access_key }}                          >> /opt/alluxio/conf/alluxio-site.properties
-        ## docker & mesos TMPFS -> swap in case of fillup (tbd.)
+        ## docker & mesos tmpfs -> swap in case of fillup (tbd.)
         - mkdir /var/lib/docker
-        - mount -t tmpfs -o size=10g tmpfs /var/lib/docker
-        - mount -t tmpfs -o size=10g tmpfs /var/lib/mesos
-        - mount -t tmpfs -o size=10g tmpfs /var/log/mesos
-        - echo 'tmpfs /var/lib/docker tmpfs size=10g 0 0'                         >> /etc/fstab
-        - echo 'tmpfs /var/lib/mesos tmpfs size=10g 0 0'                          >> /etc/fstab
-        - echo 'tmpfs /var/log/mesos tmpfs size=10g 0 0'                          >> /etc/fstab
+        - mount -t tmpfs -o size={{ container_ramdisk_gb }}G tmpfs /var/lib/docker
+        - mount -t tmpfs -o size={{ container_ramdisk_gb }}G tmpfs /var/lib/mesos
+        - mount -t tmpfs -o size={{ container_ramdisk_gb }}G tmpfs /var/log/mesos
+        - echo 'tmpfs /var/lib/docker tmpfs size={{ container_ramdisk_gb }}g 0 0' >> /etc/fstab
+        - echo 'tmpfs /var/lib/mesos tmpfs size={{ container_ramdisk_gb }}g 0 0'  >> /etc/fstab
+        - echo 'tmpfs /var/log/mesos tmpfs size={{ container_ramdisk_gb }}g 0 0'  >> /etc/fstab
         ## mesos-agent conf
         - rm -rf /etc/mesos
         - rm -rf /etc/mesos-master/
@@ -395,7 +380,8 @@
         - echo 'export MESOS_EXECUTOR_REGISTRATION_TIMEOUT="5mins"'               >> /etc/default/mesos-slave
         - echo 'export MESOS_PORT="5051"'                                         >> /etc/default/mesos-slave
         - echo 'export MESOS_WORK_DIR="/var/lib/mesos"'                           >> /etc/default/mesos-slave
-        - echo 'export MESOS_DOCKER_REMOVE_DELAY="1mins"'                         >> /etc/default/mesos-slave
+        - echo 'export MESOS_DOCKER_REMOVE_DELAY="15secs"'                        >> /etc/default/mesos-slave
+        - echo 'export MESOS_DOCKER_CONFIG="/root/.docker/config.json"'           >> /etc/default/mesos-slave
         ## docker & mesos-agent service
         - systemctl start docker
         - systemctl enable docker
@@ -412,6 +398,8 @@
         ## Instance-Metadata proxy cache
         - systemctl start nginx
         - systemctl enable nginx
+        ## first ecr-login
+        - [ sh, -c, "eval $(aws ecr get-login --region {{ aws_region }})" ]
   pre_tasks:
     - include_vars: ../roles/mesos/defaults/main.yml
     - include: populate_inventory.yml
