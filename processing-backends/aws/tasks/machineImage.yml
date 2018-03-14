@@ -139,6 +139,8 @@
       gpgkey: https://yum.dockerproject.org/gpg
   #DOCKER OverlayFS2
   #we're on centos 7.4 and overlay2 works on 3.10.0-693++
+  - name: create dir for docker
+    file: name=/etc/docker state=directory
   - name: docker overlay2
     blockinfile:
       dest: /etc/docker/daemon.json
