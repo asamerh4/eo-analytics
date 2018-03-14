@@ -2,7 +2,7 @@
 set -ex
 
 BUILD=$(git rev-parse --short HEAD)
-CLUSTER_NAME="analytics"
+CLUSTER_NAME="eo-analytics"
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
