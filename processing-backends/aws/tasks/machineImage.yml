@@ -152,6 +152,7 @@
             "overlay2.override_kernel_check=true"
           ]
         }
+      marker: ""
   #EPEL
   - name: install epel
     yum: name=epel-release
@@ -422,7 +423,7 @@
       region: "{{ aws_region }}"
       instance_id: "{{ ec2_facts.instances[0].instance_id }}"
       wait: yes
-      name: "auto-centos7.4-docker1.17-overlay2-mesos1.5.0-zk3.4.11-alluxio1.6.1-https-spark2.2.0-0010"
+      name: "auto-centos7.4-docker1.17-overlay2-mesos1.5.0-zk3.4.11-alluxio1.6.1-https-spark2.2.0-0011"
       description: "ansible managed centos7.4 with docker engine 1.17 on overlay2, mesos 1.5.0, zookeeper 3.4.11, alluxio 1.6.1, spark 2.2.0, no firewalld, no selinux, all mentioned core services are disabled by default"
     register: ami
   - debug: msg="{{ ami }}"
