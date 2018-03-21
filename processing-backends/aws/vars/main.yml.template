@@ -22,6 +22,8 @@ image_id: xxxxxxxxxxxx
 #used for e.g. s3-access from worker nodes without a need to provide credentials
 iam_role: xxxxxxxxxxxx
 
+#password of user `kibana` for secured ssl-path `/kibana`
+kibana_pwd: kibana
 
 ##################Edit HERE!!! - END##################
 ######################################################

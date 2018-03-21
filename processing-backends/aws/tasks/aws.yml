@@ -309,6 +309,45 @@
       dest: /etc/nginx/conf.d/ssl.conf
   - name: restart nginx
     service: name=nginx state=restarted enabled=yes
+  #ELK
+  - name: logstash cfg
+    blockinfile:
+      dest: /etc/logstash/conf.d/logstash.conf
+      create: yes
+      block: |
+        input {
+          beats {
+            port => 5044
+            ssl => false
+          }
+        }
+        output {
+          elasticsearch {
+            hosts => localhost
+            index => "%{[@metadata][beat]}-%{+YYYY.MM.dd}"
+          }
+          stdout {
+            codec => rubydebug
+          }
+        }
+      marker: ""
+  - name: kibana cfg
+    blockinfile:
+      dest: /etc/kibana/kibana.yml
+      create: yes
+      block: |
+        server.basePath: "/kibana"
+      marker: ""
+  - name: set pwd for kibana-app
+    command: "htpasswd -b -c /etc/nginx/htpasswd kibana {{ kibana_pwd }}"
+  - name: virtual memory -> elk
+    command: "sysctl -w vm.max_map_count=262144"
+  - name: start elasticsearch
+    service: name=elasticsearch state=started enabled=yes
+  - name: start kibana
+    service: name=kibana state=started enabled=yes
+  - name: start logstash
+    service: name=logstash state=started enabled=yes
   #ZEPPELIN-PREP
   - name: copy zeppelin postinstall scripts
     copy:
@@ -337,6 +376,19 @@
     master_private_ip: "{{ ec2_instance_facts.instances[0].private_ip_address }}"
     agent_asconfig_userdata: |
       #cloud-config
+      write_files:
+        - content: |
+            filebeat.prospectors:
+            - type: log
+              paths:
+               - '/var/lib/docker/containers/*/*.log'
+              json.message_key: log
+              json.keys_under_root: true
+              processors:
+              - add_docker_metadata: ~
+            output.logstash:
+              hosts: ["{{ master_private_ip }}:5044"]
+          path: /etc/filebeat/filebeat.yml
       runcmd:
         ## Alluxio RAMFS -> no swap
         - mkdir /var/lib/alluxio
@@ -398,6 +450,9 @@
         ## Instance-Metadata proxy cache
         - systemctl start nginx
         - systemctl enable nginx
+        ## filebeat
+        - systemctl start filebeat
+        - systemctl enable filebeat
         ## first ecr-login
         - [ sh, -c, "eval $(aws ecr get-login --region {{ aws_region }})" ]
   pre_tasks:
