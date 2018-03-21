@@ -159,6 +159,21 @@
       enabled: yes
       gpgcheck: yes
       gpgkey: https://yum.dockerproject.org/gpg
+  #ELK REPO
+  - name: add elk repo
+    blockinfile:
+      dest: /etc/yum.repos.d/elasticsearch.repo
+      create: yes
+      block: |
+        [elastic-6.x]
+        name=Elastic repository for 6.x packages
+        baseurl=https://artifacts.elastic.co/packages/6.x/yum
+        gpgcheck=1
+        gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+        enabled=1
+        autorefresh=1
+        type=rpm-md
+      marker: ""
   #DOCKER OverlayFS2
   #we're on centos 7.4 and overlay2 works on 3.10.0-693++
   - name: create dir for docker
@@ -180,7 +195,7 @@
     yum: name=epel-release
   #DOCKER, PIP, NGINX & tools
   - name: install docker-engine & other tools
-    yum: name=docker-engine-17.05.0.ce-1.el7.centos.x86_64,iptables-services,htop,python-pip,nginx
+    yum: name=docker-engine-17.05.0.ce-1.el7.centos.x86_64,iptables-services,htop,python-pip,nginx,httpd-tools,git,wget
   - name: disable docker service
     service: name=docker state=stopped enabled=no
   - name: add linux user to docker group
@@ -214,9 +229,18 @@
     when: stat_zoo.stat.exists == False
   - name: cleanup
     file: name=/home/linux/zookeeper-3.4.11.tar.gz state=absent
-  #JAVA
-  - name: install jdk 8
-    yum: name=java-1.8.0-openjdk-devel
+  #JAVA & ELK (logstash needs java)
+  - name: install jdk 8 & elk stack
+    yum: name=java-1.8.0-openjdk-devel,elasticsearch,logstash,kibana,filebeat
+  #DISABLE elk-stack
+  - name: disable elasticsearch service
+    service: name=elasticsearch state=stopped enabled=no
+  - name: disable logstash service
+    service: name=logstash state=stopped enabled=no
+  - name: disable kibana service
+    service: name=kibana state=stopped enabled=no
+  - name: disable filebeat service
+    service: name=filebeat state=stopped enabled=no
   #ALLUXIO
   - name: stat
     stat: path=/opt/alluxio
@@ -425,8 +449,8 @@
   roles:
     - ecs_template
     - {role: ecs_template_create_image,
-       img_name: "auto-centos7.4-docker1.17-overlay2-mesos1.4.1-zk3.4.11-alluxio1.6.1-https-spark2.2.0-a",
-       img_desc: "ansible managed centos7.4 with docker engine 1.17 & overlay2, mesos 1.4.1, zookeeper 3.4.11, alluxio 1.6.1, awscli, nginx (public readonly sites via ssl), spark 2.2.0, no firewalld, no selinux, some network tweaks, iptables service, ip forwarding, all mentioned core services are disabled by default",
+       img_name: "auto-centos7.4-docker1.17-overlay2-elastic6.x-mesos1.4.1-zk3.4.11-alluxio1.6.1-https-spark2.2.0-a",
+       img_desc: "ansible managed centos7.4 with docker engine 1.17 & overlay2, elasticsearch, mesos 1.4.1, zookeeper 3.4.11, alluxio 1.6.1, awscli, nginx (public readonly sites via ssl), spark 2.2.0, no firewalld, no selinux, some network tweaks, iptables service, ip forwarding, all mentioned core services are disabled by default",
        when: template_state is defined and template_state == "stopped"
       }
   tasks:    

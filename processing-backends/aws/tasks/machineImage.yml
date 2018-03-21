@@ -173,8 +173,8 @@
   - name: install epel
     yum: name=epel-release
   #DOCKER, PIP, NGINX & tools
-  - name: install docker-engine, elk & other tools
-    yum: name=docker-engine-17.05.0.ce-1.el7.centos.x86_64,firewalld,iptables-services,htop,python-pip,nginx,httpd-tools,git,wget,nfs-utils
+  - name: install docker-engine & other tools
+    yum: name=docker-engine-17.05.0.ce-1.el7.centos.x86_64,firewalld,iptables-services,htop,python-pip,nginx,httpd-tools,git,wget
   - name: awscli
     pip: name=awscli,certifi
   #SYSTEMD DAEMON reload
