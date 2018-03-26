@@ -202,6 +202,7 @@ https://PUBLIC-IP/
            |----> spark      # spark-UI, when active spark-context on internal port 4040
            |----> alluxio    # alluxio-UI
            |----> zeppelin   # zeppelin
+           |----> kibana     # kibana/elasticsearch
 ```
 
 ### some security notes
