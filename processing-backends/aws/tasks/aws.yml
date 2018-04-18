@@ -352,7 +352,12 @@
   - name: copy zeppelin postinstall scripts
     copy:
       src: ../templates/zeppelin/
-      dest: /home/centos/
+      dest: /home/centos/zeppelin/
+  #AIRFLOW-PREP
+  - name: copy airflow install scripts
+    copy:
+      src: ../templates/airflow/
+      dest: /home/centos/airflow/
 
 - hosts: public-zk-nodes
   remote_user: "{{ remote_user }}"
