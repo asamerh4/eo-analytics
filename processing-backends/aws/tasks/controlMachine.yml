@@ -160,15 +160,15 @@
   #CRONS
   - name: morning-cron(centos) -> cluster->UP
     cron:
-      name: "get aws ecr login"
-      hour: 14
-      job: "./home/centos/eo-analytics/processing-backends/aws/createCluster.sh"
+      name: "cluster-up"
+      hour: 6
+      job: "cd /home/centos/eo-analytics/processing-backends/aws && ./createCluster.sh"
       user: centos
   - name: evening-cron(centos) -> cluster->DOWN
     cron:
-      name: "get aws ecr login"
-      hour: 19
-      job: "./home/centos/eo-analytics/processing-backends/aws/destroyCluster.sh"
+      name: "cluster-down"
+      hour: 17
+      job: "cd /home/centos/eo-analytics/processing-backends/aws && ./destroyCluster.sh"
       user: centos
 
 
