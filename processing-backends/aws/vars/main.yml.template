@@ -22,6 +22,9 @@ image_id: xxxxxxxxxxxx
 #used for e.g. s3-access from worker nodes without a need to provide credentials
 iam_role: xxxxxxxxxxxx
 
+#IAM role for controlMachine (=full admin permissions)
+iam_control_role: controlMachine
+
 #password of user `kibana` for secured ssl-path `/kibana`
 kibana_pwd: kibana
 
@@ -38,9 +41,12 @@ ec2_disk_size: 10
 base_image_id: ami-337be65c
 mesos_cluster_name: "{{ cluster_id }}"
 aws_ssh_key_name: "{{ aws_ssh_key_name }}"
+aws_ssh_key_file: "{{ aws_ssh_key_file }}"
+aws_controlMachine_ssh_key_name: "{{ aws_controlMachine_ssh_key_name }}"
 subnet_cidr_masters: 192.168.0.0/24
 subnet_cidr_agents: 192.168.1.0/24
 subnet_cidr_templates: 192.168.2.0/24
+subnet_cidr_controlMachine: 192.168.3.0/24
 subnet_dns1: 100.125.4.25
 subnet_dns2: 8.8.8.8
 subnet_gate: 192.168.0.1

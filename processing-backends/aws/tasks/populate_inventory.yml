@@ -23,6 +23,12 @@
     groups: "template"
   with_items: "{{ aws_region | template_node(mesos_cluster_name, aws_access_key_id, aws_secret_access_key) }}"
 
+- name: Add ControlMachine hosts to inventory
+  add_host:
+    name: "{{ item }}"
+    groups: "control"
+  with_items: "{{ aws_region | control_node(mesos_cluster_name, aws_access_key_id, aws_secret_access_key) }}"
+
 - name: ec2-facts, if any
   ec2_instance_facts:
     region: "{{ aws_region }}"

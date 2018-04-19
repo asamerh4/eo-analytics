@@ -70,6 +70,17 @@ def template_node(aws_region, cluster_id, access_key, secret_access_key):
           ips.append(i.ip_address)
   return ips
 
+def control_node(aws_region, cluster_id, access_key, secret_access_key):
+  ips = []
+  conn = boto.ec2.connect_to_region(aws_region, aws_access_key_id=access_key, aws_secret_access_key=secret_access_key)
+
+  for r in conn.get_all_reservations():
+    for i in r.instances:
+      if (i.state == "running"):
+        if i.tags.get("Name") == 'control':
+          ips.append(i.ip_address)
+  return ips
+
 class FilterModule(object):
     ''' Ansible UUID jinja2 filters '''
 
@@ -82,4 +93,5 @@ class FilterModule(object):
         'public_zk_nodes': public_zk_nodes,
         'mesos_master_nodes': mesos_master_nodes,
 		'template_node': template_node,
+        'control_node': control_node,
       }

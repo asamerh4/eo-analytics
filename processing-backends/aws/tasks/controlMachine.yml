@@ -1,0 +1,189 @@
+---
+###########
+#IMPORTANT#
+###########
+
+#EXECUTE ONLY FROM YOUR PERSONAL LINUX HOST WHERE YOUR SECURE SSH-KEYS ARE STORED!
+- hosts: localhost
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+    # Add any existing machines to the inventory.
+    - include: populate_inventory.yml
+  tasks:
+  - name: Create control VPC
+    ec2_vpc_net:
+      name: control
+      cidr_block: "{{ vpc_cidr }}"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      tags:
+        module: ec2_vpc_net
+        this: works
+      tenancy: default
+    register: vpc
+
+  - name: Create igw
+    ec2_vpc_igw:
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      state: present
+    register: igw
+
+  - name: Create subnet
+    ec2_vpc_subnet:
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      state: present
+      vpc_id: "{{ vpc.vpc.id }}"
+      cidr: "{{ subnet_cidr_controlMachine }}"
+      az: "{{ aws_subnet_az }}"
+    register: subnet
+  
+  #- debug: msg="{{ subnet }}"
+  
+  - name: Set up route table
+    ec2_vpc_route_table:
+      vpc_id: "{{ vpc.vpc.id }}"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      tags:
+        Name: control-rtb
+      subnets:
+        - "{{ subnet_cidr_controlMachine }}"
+      routes:
+        - dest: 0.0.0.0/0
+          gateway_id: "{{ igw.gateway_id }}"
+    register: route_table    
+
+###################################################
+###################################################
+  - name: Create control security group
+    ec2_group:
+      name: "control"
+      description: "Control sec group"
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      purge_rules: yes
+      purge_rules_egress: yes
+      rules:
+        - proto: tcp
+          from_port: 22
+          to_port: 22
+          cidr_ip: "0.0.0.0/0"
+
+  - name: Launch instance
+    ec2:
+      key_name: "{{ aws_controlMachine_ssh_key_name }}"
+      group: control
+      instance_type: t2.micro
+      image: "{{ image_id }}"
+      wait: true
+      instance_tags:
+        Name: control
+      exact_count: 1
+      source_dest_check: no
+      count_tag: Name
+      region: "{{ aws_region }}"
+      aws_access_key: "{{ aws_access_key_id }}"
+      aws_secret_key: "{{ aws_secret_access_key }}"
+      instance_profile_name: "{{ iam_control_role }}"
+      vpc_subnet_id: "{{ subnet.subnet.id }}"
+      assign_public_ip: yes
+      volumes:
+      - device_name: /dev/sda1
+        delete_on_termination: true
+        volume_size: 10
+        device_type: io1
+        iops: 500
+    register: ec2
+  #- debug: msg="{{ ec2 }}"
+  
+  - name: Wait for SSH to come up
+    wait_for:
+      host: "{{ item.public_dns_name }}"
+      port: 22
+      delay: 60
+      timeout: 320
+      state: started
+    with_items: "{{ ec2.instances | rejectattr('state', 'equalto', 'terminated') | list }}"
+#TODO: pip install --upgrade Jinja2
+  - include: populate_inventory.yml
+
+#########################
+#CONTROL MACHINE SW-CONF#
+#########################
+- hosts: control
+  remote_user: "{{ remote_user }}"
+  become: yes
+  pre_tasks:
+    - include_vars: ../vars/main.yml
+  tasks:
+  #CLUSTER-SSH-KEY
+  - name: copy ssh-key
+    copy:
+      src: "{{ aws_ssh_key_file }}"
+      dest: /home/centos/{{ aws_ssh_key_name }}.pem
+  - name: chown & chmod
+    file:
+      path: /home/centos/{{ aws_ssh_key_name }}.pem
+      owner: centos
+      group: centos
+      mode: 0600
+  #FETCH CLUSTER-REPO
+  - name: clone ansible-repo
+    git:
+      repo: https://github.com/asamerh4/eo-analytics.git
+      dest: /home/centos/eo-analytics
+  #COPY ANSIBLE-VARS
+  - name: copy vars
+    copy:
+      src: ../vars/main.yml
+      dest: /home/centos/eo-analytics/processing-backends/aws/vars/main.yml
+  - name: chown
+    file:
+      path: /home/centos/eo-analytics
+      owner: centos
+      group: centos
+      recurse: yes
+  #TOOLS
+  - name: ansible & more
+    pip: name=ansible,boto,boto3
+  - name: upgrade
+    command: "sudo pip install --upgrade Jinja2"
+  #CRONS
+  - name: morning-cron(centos) -> cluster->UP
+    cron:
+      name: "get aws ecr login"
+      hour: 14
+      job: "./home/centos/eo-analytics/processing-backends/aws/createCluster.sh"
+      user: centos
+  - name: evening-cron(centos) -> cluster->DOWN
+    cron:
+      name: "get aws ecr login"
+      hour: 19
+      job: "job: "./home/centos/eo-analytics/processing-backends/aws/destroyCluster.sh""
+      user: centos
+
+
+
+  #MOTD
+  - name: motd-cleanup
+    file: name=/etc/motd state=absent
+  - name: set nice motd welcome msg
+    blockinfile:
+      dest: /etc/motd
+      create: yes
+      block: |    
+       ..                      |              |
+       ..    __|   _ \  __ \   __|   __| _ \  |
+       ..   (     (   | |   |  |    |   (   | |
+       ..  \___| \___/ _|  _| \__| _|  \___/ _|
+      marker: " "
+
