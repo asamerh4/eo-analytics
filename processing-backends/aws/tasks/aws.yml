@@ -115,7 +115,7 @@
   #- debug: msg="{{ rtb_facts }}"
   
   - name: Create VPC S3-Endpoint
-    command: aws ec2 create-vpc-endpoint --vpc-id "{{ vpc.vpc.id }}" --service-name com.amazonaws.{{ aws_region }}.s3 --route-table-ids {{ rtb_facts_masters.route_tables[0].id }} {{ rtb_facts_agents.route_tables[0].id }} --output json
+    command: aws ec2 create-vpc-endpoint --vpc-id "{{ vpc.vpc.id }}" --service-name com.amazonaws.{{ aws_region }}.s3 --route-table-ids {{ rtb_facts_masters.route_tables[0].id }} {{ rtb_facts_agents.route_tables[0].id }} --output json --region "{{ aws_region }}"
     ignore_errors: yes
 
   - name: Create the public security group
