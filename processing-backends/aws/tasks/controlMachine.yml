@@ -168,7 +168,7 @@
     cron:
       name: "get aws ecr login"
       hour: 19
-      job: "job: "./home/centos/eo-analytics/processing-backends/aws/destroyCluster.sh""
+      job: "./home/centos/eo-analytics/processing-backends/aws/destroyCluster.sh"
       user: centos
 
 
