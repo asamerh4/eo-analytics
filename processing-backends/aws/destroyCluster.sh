@@ -14,5 +14,5 @@ echo "**delete LC if any"
 aws autoscaling delete-launch-configuration --launch-configuration-name $CLUSTER_NAME-$BUILD-agent --region eu-central-1
 
 echo "**delete master"
-ec2_id=$(aws ec2 describe-instances --filter Name=tag:Name,Values=$CLUSTER_NAME-$BUILD-master --query 'Reservations[0].Instances[0].InstanceId' --output text --region eu-central-1)
+ec2_id=$(aws ec2 describe-instances --filter Name=tag:Name,Values=$CLUSTER_NAME-$BUILD-master --region eu-central-1 --query 'Reservations[*].Instances[0].InstanceId' --output text --region eu-central-1)
 aws ec2 terminate-instances --instance-ids $ec2_id --output json --region eu-central-1

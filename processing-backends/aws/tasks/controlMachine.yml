@@ -154,7 +154,14 @@
       recurse: yes
   #TOOLS
   - name: ansible & more
-    pip: name=ansible,boto,boto3
+    pip: 
+      name={{ item.name }} 
+      version={{ item.version | default(omit) }} 
+    with_items: 
+    - name: ansible 
+      version: 2.4.2.0
+    - name: boto 
+    - name: boto3 
   - name: upgrade
     command: "sudo pip install --upgrade Jinja2"
   #CRONS
