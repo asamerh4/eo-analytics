@@ -294,8 +294,12 @@
     - include_vars: ../vars/main.yml
     - include_vars: ../roles/mesos/defaults/main.yml
   tasks:
-  - name: RAMDISK in /var/lib/docker
-    mount: name=/var/lib/docker src='tmpfs' fstype=tmpfs opts='size={{ container_ramdisk_gb }}g' state=mounted
+  - name: format ephemeral instance store (used as docker working dir) with ext4
+    filesystem:
+      fstype: ext4
+      dev: /dev/nvme0n1
+  - name: Mount ephemeral instance store to /var/lib/docker
+    mount: path=/var/lib/docker src=/dev/nvme0n1 fstype=ext4 state=mounted
   - name: RAMDISK in /var/lib/mesos
     mount: name=/var/lib/mesos src='tmpfs' fstype=tmpfs opts='size={{ container_ramdisk_gb }}g' state=mounted 
   - name: RAMDISK in /var/log/mesos
@@ -415,10 +419,11 @@
         - echo aws.secretKey={{ aws_secret_access_key }}                          >> /opt/alluxio/conf/alluxio-site.properties
         ## docker & mesos tmpfs -> swap in case of fillup (tbd.)
         - mkdir /var/lib/docker
-        - mount -t tmpfs -o size={{ container_ramdisk_gb }}G tmpfs /var/lib/docker
+        - mkfs -t ext4 /dev/nvme0n1
+        - mount -t ext4 /dev/nvme0n1 /var/lib/docker
         - mount -t tmpfs -o size={{ container_ramdisk_gb }}G tmpfs /var/lib/mesos
         - mount -t tmpfs -o size={{ container_ramdisk_gb }}G tmpfs /var/log/mesos
-        - echo 'tmpfs /var/lib/docker tmpfs size={{ container_ramdisk_gb }}g 0 0' >> /etc/fstab
+        - echo '/dev/nvme0n1 /var/lib/docker ext4 defaults 0 0'                      >> /etc/fstab
         - echo 'tmpfs /var/lib/mesos tmpfs size={{ container_ramdisk_gb }}g 0 0'  >> /etc/fstab
         - echo 'tmpfs /var/log/mesos tmpfs size={{ container_ramdisk_gb }}g 0 0'  >> /etc/fstab
         ## mesos-agent conf

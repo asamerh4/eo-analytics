@@ -10,9 +10,9 @@ aws_secret_access_key: xxxxxxxxxxxxx
 cluster_id: "{{ cluster_id }}"
 
 #ec2 instance type
-ec2_flavour: r4.xlarge
+ec2_flavour: i3.xlarge
 
-#container ramdisk (e.g. for docker workdirs in /var/lib/docker) in GB (based on chosen ec2_flavour)
+#container ramdisk (e.g. for workdirs in /var/lib/*) in GB (based on chosen ec2_flavour)
 container_ramdisk_gb: 28
 
 #ansible-created image (produced from createAMI.sh)
