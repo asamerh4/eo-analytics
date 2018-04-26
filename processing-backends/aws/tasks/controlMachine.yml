@@ -169,6 +169,7 @@
     cron:
       name: "cluster-up"
       hour: 6
+      weekday: 1-5
       job: "cd /home/centos/eo-analytics/processing-backends/aws && ./createCluster.sh"
       user: centos
   - name: evening-cron(centos) -> cluster->DOWN

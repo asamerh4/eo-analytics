@@ -330,14 +330,14 @@
             codec => rubydebug
           }
         }
-      marker: ""
+      #marker: ""
   - name: kibana cfg
     blockinfile:
       dest: /etc/kibana/kibana.yml
       create: yes
       block: |
         server.basePath: "/kibana"
-      marker: ""
+      #marker: ""
   - name: set pwd for kibana-app
     command: "htpasswd -b -c /etc/nginx/htpasswd kibana {{ kibana_pwd }}"
   - name: virtual memory -> elk
