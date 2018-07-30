@@ -1,4 +1,4 @@
-zookeeper_version: 3.4.11
+zookeeper_version: 3.4.12
 apt_cache_timeout: 3600
 client_port: 2181
 init_limit: 5

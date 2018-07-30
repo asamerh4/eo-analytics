@@ -11,7 +11,7 @@ echo -e ${YELLOW}"**building analytics machine Image..."${NC}
 
 rm -rf ~/.ansible
 python scripts/otc_create_machine_image.py \
- -k "~/mesos130-api.pem" \
- -ok mesos130-api \
+ -k "~/mesos150-api.pem" \
+ -ok mesos150-api \
  -u linux \
  eu-de

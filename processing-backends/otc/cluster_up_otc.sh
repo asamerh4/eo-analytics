@@ -15,8 +15,8 @@ python scripts/otc_deploy.py \
   -m \
   -s3 "s3a://alluxio-tests/tests" \
   -b 4 \
-  -k "~/mesos130-api.pem" \
-  -ok mesos130-api \
+  -k "~/mesos150-api.pem" \
+  -ok mesos150-api \
   -u linux \
  eu-de \
  $CLUSTER_NAME"-"$BUILD \

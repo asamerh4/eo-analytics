@@ -207,7 +207,7 @@
   #MESOS
   - name: add mesosphere repo
     yum: name=http://repos.mesosphere.com/el/7/noarch/RPMS/mesosphere-el-repo-7-3.noarch.rpm state=present
-  - name: install mesos 1.4.1
+  - name: install latest mesos
     yum: name=mesos
   - name: disable mesos-master
     service: name=mesos-master state=stopped enabled=no
@@ -215,20 +215,20 @@
     service: name=mesos-slave state=stopped enabled=no
   #ZOOKEEPER-prep (installed to /opt/zookeeper-X.X.X) -> systemd gen & zk-config within zookeeper role, when image is used as a mesos-master
   - name: stat
-    stat: path=/opt/zookeeper-3.4.11/bin
+    stat: path=/opt/zookeeper-3.4.12/bin
     register: stat_zoo
   - name: create zk-dir
-    file: path=/opt/zookeeper-3.4.11 state=directory
+    file: path=/opt/zookeeper-3.4.12 state=directory
   - name: Download zookeeper
     get_url:
-      url: http://www.us.apache.org/dist/zookeeper/zookeeper-3.4.11/zookeeper-3.4.11.tar.gz 
-      dest: /home/linux/zookeeper-3.4.11.tar.gz
+      url: http://artfiles.org/apache.org/zookeeper/zookeeper-3.4.12/zookeeper-3.4.12.tar.gz 
+      dest: /home/linux/zookeeper-3.4.12.tar.gz
     when: stat_zoo.stat.exists == False
   - name: Unpack tarball.
-    command: tar zxf /home/linux/zookeeper-3.4.11.tar.gz --strip-components=1 chdir=/opt/zookeeper-3.4.11 creates=/opt/zookeeper-3.4.11/bin
+    command: tar zxf /home/linux/zookeeper-3.4.12.tar.gz --strip-components=1 chdir=/opt/zookeeper-3.4.12 creates=/opt/zookeeper-3.4.12/bin
     when: stat_zoo.stat.exists == False
   - name: cleanup
-    file: name=/home/linux/zookeeper-3.4.11.tar.gz state=absent
+    file: name=/home/linux/zookeeper-3.4.12.tar.gz state=absent
   #JAVA & ELK (logstash needs java)
   - name: install jdk 8 & elk stack
     yum: name=java-1.8.0-openjdk-devel,elasticsearch,logstash,kibana,filebeat
@@ -247,7 +247,7 @@
     register: stat
   - name: download alluxio 1.6.1
     get_url:
-      url: http://downloads.alluxio.org/downloads/files/1.6.1/alluxio-1.6.1-hadoop-2.8-bin.tar.gz
+      url: http://support.brightcomputing.com/bigdata/alluxio-1.6.1-hadoop-2.8-bin.tar.gz
       dest: /home/linux/alluxio.tar.gz
     when: stat.stat.exists == False
   - name: unpack alluxio
@@ -327,7 +327,7 @@
     register: spark_stat
   - name: download spark 2.2.0
     get_url:
-      url: ftp://mirror.netcologne.de/apache.org/spark/spark-2.2.0/spark-2.2.0-bin-hadoop2.7.tgz
+      url: https://archive.apache.org/dist/spark/spark-2.2.0/spark-2.2.0-bin-hadoop2.7.tgz
       dest: /home/linux/spark-2.2.0-bin-hadoop2.7.tgz
     when: spark_stat.stat.exists == False
   - name: unpack spark
@@ -426,7 +426,7 @@
       create: yes
       block: |
        ..   ___   ____    analytics base image
-       ..  / _ \ / __ \   centos7.4-mesos1.4.1-alluxio1.6.1-spark2.2.0
+       ..  / _ \ / __ \   centos7.5-mesos1.6.1-alluxio1.6.1-spark2.2.0
        .. /  __// /_/ /   built for you on: {{ lookup('pipe','date') }}
        .. \___/ \____/    github.com/asamerh4/eo-analytics
       marker: " "
@@ -449,8 +449,8 @@
   roles:
     - ecs_template
     - {role: ecs_template_create_image,
-       img_name: "auto-centos7.4-docker1.17-overlay2-elastic6.x-mesos1.4.1-zk3.4.11-alluxio1.6.1-https-spark2.2.0-a",
-       img_desc: "ansible managed centos7.4 with docker engine 1.17 & overlay2, elasticsearch, mesos 1.4.1, zookeeper 3.4.11, alluxio 1.6.1, awscli, nginx (public readonly sites via ssl), spark 2.2.0, no firewalld, no selinux, some network tweaks, iptables service, ip forwarding, all mentioned core services are disabled by default",
+       img_name: "auto-centos7.5-docker1.17-overlay2-elastic6.x-mesos1.6.1-zk3.4.12-alluxio1.6.1-https-spark2.2.0-a",
+       img_desc: "ansible managed centos7.5 with docker engine 1.17 & overlay2, elasticsearch, mesos 1.6.1, zookeeper 3.4.12, alluxio 1.6.1, awscli, nginx (public readonly sites via ssl), spark 2.2.0, no firewalld, no selinux, some network tweaks, iptables service, ip forwarding, all mentioned core services are disabled by default",
        when: template_state is defined and template_state == "stopped"
       }
   tasks:    
