@@ -12,8 +12,8 @@ rm -rf ~/.ansible
 python scripts/cluster_deploy.py \
   -z \
   -m \
-  -s3 "s3a://sentinel3-tiles" \
-  -b 800 \
+  -s3 "s3a://DATA-BUCKET" \
+  -b 5 \
   -k "~/mesos140.pem" \
   -ok mesos140 \
   -u centos \

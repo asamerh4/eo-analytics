@@ -1,5 +1,9 @@
 processing-backends/aws/vars/main.yml
+processing-backends/aws/createCluster.sh
+processing-backends/aws/createCluster.sh.sample*
+processing-backends/aws/vars/main.yml.sample*
 processing-backends/otc/vars/main.yml
+processing-backends/aws/vars/main.yml.sample*
 processing-backends/aws/tasks/*.retry
 processing-backends/otc/tasks/*.retry
 *.pyc
