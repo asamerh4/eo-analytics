@@ -1,7 +1,7 @@
 #!/bin/bash
 
 BUILD=$(git rev-parse --short HEAD)
-CLUSTER_NAME="eo-analytics"
+CLUSTER_NAME="geomesa-testbed"
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 

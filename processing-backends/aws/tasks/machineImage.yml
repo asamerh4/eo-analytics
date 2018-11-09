@@ -210,7 +210,7 @@
     file: path=/opt/zookeeper-3.4.11 state=directory
   - name: Download zookeeper
     get_url:
-      url: http://mirror.klaus-uwe.me/apache/zookeeper/zookeeper-3.4.11/zookeeper-3.4.11.tar.gz 
+      url: http://mirror.klaus-uwe.me/apache/zookeeper/zookeeper-3.4.12/zookeeper-3.4.12.tar.gz 
       dest: /home/centos/zookeeper-3.4.11.tar.gz
     when: stat_zoo.stat.exists == False
   - name: Unpack tarball.
@@ -316,7 +316,7 @@
     register: spark_stat
   - name: download spark 2.2.0
     get_url:
-      url: ftp://mirror.netcologne.de/apache.org/spark/spark-2.2.0/spark-2.2.0-bin-hadoop2.7.tgz
+      url: https://archive.apache.org/dist/spark/spark-2.2.0/spark-2.2.0-bin-hadoop2.7.tgz
       dest: /home/centos/spark-2.2.0-bin-hadoop2.7.tgz
     when: spark_stat.stat.exists == False
   - name: unpack spark
@@ -443,7 +443,7 @@
       region: "{{ aws_region }}"
       instance_id: "{{ ec2_facts.instances[0].instance_id }}"
       wait: yes
-      name: "auto-centos7.4-docker1.17-overlay2-elastic6.x-mesos1.5.0-zk3.4.11-alluxio1.6.1-https-spark2.2.0-0013"
+      name: "auto-centos7.4-docker1.17-overlay2-elastic6.x-mesos1.5.0-zk3.4.11-alluxio1.6.1-https-spark2.2.0-0014"
       description: "ansible managed centos7.4 with docker engine 1.17 on overlay2, elasticsearch, mesos 1.5.0, zookeeper 3.4.11, alluxio 1.6.1, spark 2.2.0, no firewalld, no selinux, all mentioned core services are disabled by default"
     register: ami
   - debug: msg="{{ ami }}"

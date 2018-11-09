@@ -463,8 +463,9 @@
         ## filebeat
         - systemctl start filebeat
         - systemctl enable filebeat
-        ## first ecr-login
+        ## first ecr-login (auto-creates /root/.docker/config.json)
         - [ sh, -c, "eval $(aws ecr get-login --region {{ aws_region }})" ]
+        
   pre_tasks:
     - include_vars: ../roles/mesos/defaults/main.yml
     - include: populate_inventory.yml
